@@ -104,6 +104,9 @@ tasks:
   - src/judge.rs
   - src/lib.rs
   - tests/eval.rs
+  - README.md
+  - Cargo.toml
+  - Cargo.lock
   evidence: []
 - id: US-REPLYSIEVE-0.1.0-T06
   summary: Tests proving pre-check latency and that no comment text reaches disk or logs.
@@ -124,7 +127,7 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T07
   summary: Library docs with runnable example, README, licenses, NOTICE, contributor and security docs, CHANGELOG.
   why_required: A published crate without docs, licenses and README fails the operational criteria.
-  status: todo
+  status: done
   depends_on:
   - US-REPLYSIEVE-0.1.0-T03
   acceptance_criteria:
@@ -140,7 +143,13 @@ tasks:
   - SECURITY.md
   - CODE_OF_CONDUCT.md
   - CHANGELOG.md
-  evidence: []
+  - src/lib.rs
+  evidence:
+  - "cargo test --doc \u2014 1 passed: crate-level example in src/lib.rs runs a stock-phrase check offline and shows the model path"
+  - "RUSTDOCFLAGS=-D warnings cargo doc --no-deps \u2014 exit 0 (missing_docs is warn in lib.rs, so every public item is documented)"
+  - 'README first screen: what it is, cargo install, check example with output, MCP setup for Claude Code (claude mcp add -e) and Codex (codex mcp add --env), both flags confirmed against the local CLIs'' --help'
+  - NOTICE and LICENSE-MIT read Copyright (c) 2026 Aakash Pawar (zeroonething); Cargo.toml license = MIT OR Apache-2.0; LICENSE-APACHE is the Apache 2.0 text
+  - "cargo package --list --allow-dirty \u2014 CHANGELOG.md Cargo.lock Cargo.toml LICENSE-APACHE LICENSE-MIT NOTICE README.md data/labeled.jsonl src/*.rs only; cargo publish --dry-run --allow-dirty \u2014 aborting upload due to dry run (success)"
 - id: US-REPLYSIEVE-0.1.0-T08
   summary: CI and release workflows, cargo-deny config, contributors script, dependabot.
   why_required: The contract requires CI on every push and PR and a gated release path.

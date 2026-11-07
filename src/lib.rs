@@ -3,7 +3,36 @@
 //!
 //! Free pre-checks (length, stock phrases, duplicates, injection markers) run
 //! first with no network call. Comments that pass go to a decision model on
-//! OpenRouter.
+//! OpenRouter, tried model by model in the order you give.
+//!
+//! ```
+//! use replysieve::{Checker, Comment, Decision, Level, Options, Reason};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), replysieve::Error> {
+//! let checker = Checker::new(
+//!     Options { level: Level::Medium, ..Options::default() },
+//!     std::env::var("OPENROUTER_API_KEY").ok(),
+//! );
+//!
+//! // Stock praise is rejected by a free pre-check, with no model call.
+//! let verdict = checker.check(&Comment::new("Great product, love it!!"), &[]).await?;
+//! assert_eq!(verdict.verdict, Decision::Reject);
+//! assert_eq!(verdict.reason, Reason::StockPhrase);
+//! assert_eq!(verdict.model, None);
+//!
+//! // Anything that passes the pre-checks goes to the model.
+//! let comment = Comment {
+//!     title: Some("Taskly, a todo app with offline sync".into()),
+//!     ..Comment::new("Does offline sync merge edits made on two phones?")
+//! };
+//! match checker.check(&comment, &[]).await {
+//!     Ok(v) => println!("{}", serde_json::to_string(&v).unwrap()),
+//!     Err(e) => eprintln!("{e}"), // no OPENROUTER_API_KEY set
+//! }
+//! # Ok(())
+//! # }
+//! ```
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -95,15 +124,8 @@ impl Checker {
 
     /// Like [`Checker::new`], against another OpenRouter-compatible base URL.
     pub fn with_base_url(options: Options, api_key: Option<String>, base_url: &str) -> Self {
-        let extra: Vec<&str> = options
-            .preset
-            .stock_phrases()
-            .iter()
-            .copied()
-            .chain(options.stock_phrases.iter().map(String::as_str))
-            .collect();
         Checker {
-            prechecks: Prechecks::new(extra),
+            prechecks: Prechecks::new(Self::extra_stock(&options)),
             client: api_key
                 .filter(|k| !k.trim().is_empty())
                 .map(|k| openrouter::Client::new(base_url, k)),
@@ -116,6 +138,26 @@ impl Checker {
     pub fn at_level(mut self, level: Level) -> Self {
         self.options.level = level;
         self
+    }
+
+    /// A checker with other options that shares this one's HTTP client and key.
+    pub fn with_options(&self, options: Options) -> Self {
+        Checker {
+            prechecks: Prechecks::new(Self::extra_stock(&options)),
+            questions: judge::questions(options.preset, &options.rules),
+            client: self.client.clone(),
+            options,
+        }
+    }
+
+    fn extra_stock(options: &Options) -> Vec<&str> {
+        options
+            .preset
+            .stock_phrases()
+            .iter()
+            .copied()
+            .chain(options.stock_phrases.iter().map(String::as_str))
+            .collect()
     }
 
     /// The options this checker judges with.
