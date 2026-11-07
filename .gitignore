@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+
+# UltraShip: transient deploy/publish hook output
+.ultraship/products/*/evidence/
+
+# Rust
+/target/
+
+# Local secrets
+.env
+.env.*
