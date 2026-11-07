@@ -8,11 +8,14 @@
 #![warn(missing_docs)]
 
 mod config;
+mod judge;
+mod openrouter;
 mod precheck;
 mod presets;
 mod types;
 
 pub use config::Config;
+pub use openrouter::DEFAULT_BASE_URL;
 pub use precheck::normalize;
 pub use presets::Preset;
 pub use types::{Comment, Decision, Level, Reason, Verdict};
@@ -78,7 +81,8 @@ impl std::error::Error for Error {}
 pub struct Checker {
     options: Options,
     prechecks: Prechecks,
-    api_key: Option<String>,
+    client: Option<openrouter::Client>,
+    questions: serde_json::Value,
 }
 
 impl Checker {
@@ -86,6 +90,11 @@ impl Checker {
     /// pre-check verdicts; a comment that needs the model then fails with
     /// [`Error::MissingApiKey`].
     pub fn new(options: Options, api_key: Option<String>) -> Self {
+        Self::with_base_url(options, api_key, DEFAULT_BASE_URL)
+    }
+
+    /// Like [`Checker::new`], against another OpenRouter-compatible base URL.
+    pub fn with_base_url(options: Options, api_key: Option<String>, base_url: &str) -> Self {
         let extra: Vec<&str> = options
             .preset
             .stock_phrases()
@@ -95,7 +104,10 @@ impl Checker {
             .collect();
         Checker {
             prechecks: Prechecks::new(extra),
-            api_key: api_key.filter(|k| !k.trim().is_empty()),
+            client: api_key
+                .filter(|k| !k.trim().is_empty())
+                .map(|k| openrouter::Client::new(base_url, k)),
+            questions: judge::questions(options.preset, &options.rules),
             options,
         }
     }
@@ -124,14 +136,53 @@ impl Checker {
         })
     }
 
-    /// Judge one comment.
+    /// Judge one comment: free pre-checks first, then the models in order.
+    /// When no model answers, the verdict is needs_review with reason
+    /// model_unavailable, never a silent approve.
     pub async fn check(&self, comment: &Comment, recent: &[String]) -> Result<Verdict, Error> {
+        let start = Instant::now();
         if let Some(v) = self.precheck(comment, recent) {
             return Ok(v);
         }
-        if self.api_key.is_none() {
-            return Err(Error::MissingApiKey);
+        let client = self.client.as_ref().ok_or(Error::MissingApiKey)?;
+        let state = judge::state(comment, self.options.preset);
+        let level = self.options.level;
+        for model in &self.options.models {
+            let asked = Instant::now();
+            let answer = match client.decide(model, &state, &self.questions).await {
+                Ok(resp) => judge::judge(level, &self.options.rules, &resp.answers)
+                    .map(|j| (resp.model, j))
+                    .ok_or_else(|| "malformed answers".to_string()),
+                Err(e) => Err(e),
+            };
+            match answer {
+                Ok((answered_by, j)) => {
+                    log::info!(
+                        "model {model} answered in {} ms",
+                        asked.elapsed().as_millis()
+                    );
+                    return Ok(Verdict {
+                        verdict: j.decision,
+                        reason: j.reason,
+                        confidence: j.confidence,
+                        level,
+                        model: Some(answered_by),
+                        latency_ms: start.elapsed().as_millis() as u64,
+                        rule: j.rule,
+                    });
+                }
+                Err(e) => log::warn!("model {model} failed ({e}); trying the next model"),
+            }
         }
-        unimplemented!("model path")
+        log::warn!("no model answered");
+        Ok(Verdict {
+            verdict: Decision::NeedsReview,
+            reason: Reason::ModelUnavailable,
+            confidence: 0.0,
+            level,
+            model: None,
+            latency_ms: start.elapsed().as_millis() as u64,
+            rule: None,
+        })
     }
 }

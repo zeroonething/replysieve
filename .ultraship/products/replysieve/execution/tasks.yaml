@@ -29,7 +29,7 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T02
   summary: OpenRouter connector with model-list fallback, injection guard, prompt with context and custom rules, and level decision logic.
   why_required: Without the model path no comment that passes pre-checks gets a verdict.
-  status: todo
+  status: done
   depends_on:
   - US-REPLYSIEVE-0.1.0-T01
   acceptance_criteria:
@@ -51,7 +51,11 @@ tasks:
   - tests/common/mod.rs
   - Cargo.toml
   - Cargo.lock
-  evidence: []
+  evidence:
+  - "cargo test \u2014 27 passed, 0 failed (10 unit incl. judge levels/needs_review band/fence; 7 cli_offline; 10 tests/model_mock.rs against wiremock: one verdict JSON, 20-line batch in order, level fixtures generic light/medium/heavy and off-topic medium/heavy, custom rule rejected at all levels with rule shown, title/description/parent change heavy decision, 6 injection fixtures rejected at all levels, comment fenced as data, fallback to next model, all models failing gives needs_review model_unavailable, unreachable server gives model_unavailable)"
+  - "cargo clippy --all-targets -- -D warnings \u2014 exit 0; cargo fmt --check \u2014 exit 0"
+  - 'Live smoke, target/debug/replysieve check against ~typesafe/jev-latest: specific approved (useful, 1.0), heavy nonspecific rejected (not_specific, 0.61), medium generic rejected (generic, 0.98), polite injection rejected (injection_attempt, 0.98); 0.7-1.4 s per call'
+  - 'Finding: OpenRouter /api/alpha/decisions returns HTTP 400 for an invalid first model even with a models list, so fallback is done client-side, model by model'
 - id: US-REPLYSIEVE-0.1.0-T03
   summary: MCP server over stdio with check_comment and check_batch tools.
   why_required: Agent users (Claude Code, Codex) reach replysieve only through MCP in 0.1.0.

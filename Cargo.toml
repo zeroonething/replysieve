@@ -25,6 +25,9 @@ include = [
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
+futures-util = "0.3.34"
+log = "0.4.29"
+reqwest = { version = "0.13.5", features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
@@ -32,3 +35,6 @@ toml = "1.2.1"
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[dev-dependencies]
+wiremock = "0.6.5"
