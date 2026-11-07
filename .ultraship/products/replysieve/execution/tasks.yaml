@@ -4,7 +4,7 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T01
   summary: Crate skeleton, verdict types, levels, presets, TOML config, free pre-checks and the offline CLI check path.
   why_required: Every verdict flows through these types, and pre-checks must answer without any model call.
-  status: todo
+  status: done
   depends_on: []
   acceptance_criteria:
   - '`--preset comments|product-review|launch-thread` each load, and an unknown preset fails with a clear error and non-zero exit'
@@ -21,7 +21,11 @@ tasks:
   - src/presets.rs
   - src/main.rs
   - tests/cli_offline.rs
-  evidence: []
+  evidence:
+  - "cargo test \u2014 12 passed, 0 failed (5 precheck unit, 7 tests/cli_offline.rs: too_short, stock_phrase, duplicate via --recent, every preset loads, unknown preset error, missing OPENROUTER_API_KEY error before network, unknown level error)"
+  - "cargo clippy --all-targets -- -D warnings \u2014 exit 0"
+  - "cargo fmt --check \u2014 exit 0"
+  - '#![forbid(unsafe_code)] in src/lib.rs and [lints.rust] unsafe_code = forbid in Cargo.toml'
 - id: US-REPLYSIEVE-0.1.0-T02
   summary: OpenRouter connector with model-list fallback, injection guard, prompt with context and custom rules, and level decision logic.
   why_required: Without the model path no comment that passes pre-checks gets a verdict.
