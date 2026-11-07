@@ -71,13 +71,16 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T04
   summary: Draft about 300 labeled example comments across reviews, Reddit-style threads, X replies and launch comments.
   why_required: The accuracy target is measured on this set; without it there is no evidence of value.
-  status: todo
+  status: done
   depends_on: []
   acceptance_criteria:
   - 'At medium on the labeled set with the default model: junk caught 95% or more, good wrongly rejected under 5%'
   files:
   - data/labeled.jsonl
-  evidence: []
+  evidence:
+  - "python3 verify (main thread, independent) \u2014 302 lines, 302 unique ids; specific 93, generic 60, spam_promo 35, nonspecific 30, toxic 30, off_topic 29, injection 25; review 78, reddit 76, launch 75, x 73; 0 word-minimum violations"
+  - Drafted by one subagent; 20 fictional contexts reused 14-17 times each; .example domains only
+  - 'Pending human approval: Aakash reviews and corrects the labeled example set before threshold tuning in T05'
 - id: US-REPLYSIEVE-0.1.0-T05
   summary: eval command over the labeled set and threshold tuning against the live default model.
   why_required: The release promises accuracy shown on a labeled set, measured by this command.
