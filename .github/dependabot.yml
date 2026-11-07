@@ -1,0 +1,21 @@
+# Dependency PRs open against develop, never main. Work reaches main through a
+# release, so a bump landing there directly would ship on the next tag without
+# ever having been on the branch CI gates.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine patch bumps instead of a dozen.
+      patch-updates:
+        update-types: ["patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly

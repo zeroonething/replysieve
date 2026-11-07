@@ -144,7 +144,7 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T08
   summary: CI and release workflows, cargo-deny config, contributors script, dependabot.
   why_required: The contract requires CI on every push and PR and a gated release path.
-  status: todo
+  status: done
   depends_on:
   - US-REPLYSIEVE-0.1.0-T01
   acceptance_criteria:
@@ -159,7 +159,12 @@ tasks:
   - .github/dependabot.yml
   - deny.toml
   - .gitleaks.toml
-  evidence: []
+  evidence:
+  - "cargo deny check \u2014 advisories ok, bans ok, licenses ok, sources ok (no ignores)"
+  - "actionlint .github/workflows/*.yml \u2014 no findings; all 24 uses: lines pinned to 40-char commit SHAs taken from semlith; top-level permissions contents: read in ci.yml and release.yml; ci.yml uses no secrets"
+  - 'ci.yml jobs: fmt, clippy, test (ubuntu, macos), deny, secrets (gitleaks), install (cargo install --path . then replysieve --version and offline check, ubuntu and macos), package (cargo package --list and cargo publish --dry-run). release.yml jobs: verify (tag equals Cargo.toml version, tag on main, CHANGELOG heading), test, release (notes from CHANGELOG plus contributors section), thank, publish (environment crates-io, CARGO_REGISTRY_TOKEN)'
+  - "bash -n and shellcheck .github/contributors.sh \u2014 clean; render on sample data produced a Contributors section"
+  - 'Subagent scratch-copy run: cargo publish --dry-run --locked exit 0 and cargo install smoke printed replysieve 0.1.0 and a too_short reject verdict; the real tree waits on T07 docs for README/CHANGELOG/licenses'
 - id: US-REPLYSIEVE-0.1.0-T09
   summary: Create the GitHub repository and apply the pre-public hardening checklist.
   why_required: The release is published from a public repository that must be hardened before it opens.

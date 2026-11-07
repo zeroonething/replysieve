@@ -1,0 +1,29 @@
+# cargo deny check: licences, advisories, bans and sources for every crate in
+# Cargo.lock. Run on every push and pull request by the `deny` job in ci.yml.
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unlicense",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "warn"
+# A `*` requirement lets any future release in, reviewed or not.
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
