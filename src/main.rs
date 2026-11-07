@@ -1,6 +1,7 @@
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
-use replysieve::{API_KEY_ENV, Checker, Comment, Config, Level, Options, Preset};
+use futures_util::{StreamExt, stream};
+use replysieve::{API_KEY_ENV, Checker, Comment, Config, DEFAULT_BASE_URL, Level, Options, Preset};
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -90,8 +91,40 @@ fn options(common: &Common) -> anyhow::Result<Options> {
     Ok(opts)
 }
 
-fn api_key() -> Option<String> {
-    std::env::var(API_KEY_ENV).ok()
+/// Environment variable that points the client at another base URL (tests, proxies).
+const BASE_URL_ENV: &str = "REPLYSIEVE_OPENROUTER_URL";
+
+/// Comments judged at once in a batch.
+const CONCURRENCY: usize = 8;
+
+fn checker(common: &Common) -> anyhow::Result<Checker> {
+    let base = std::env::var(BASE_URL_ENV).unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+    Ok(Checker::with_base_url(
+        options(common)?,
+        std::env::var(API_KEY_ENV).ok(),
+        &base,
+    ))
+}
+
+/// Stderr logger for --verbose. Messages carry timing and model names only.
+struct StderrLog;
+
+impl log::Log for StderrLog {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.target().starts_with("replysieve")
+    }
+    fn log(&self, r: &log::Record) {
+        if self.enabled(r.metadata()) {
+            eprintln!("replysieve: {}", r.args());
+        }
+    }
+    fn flush(&self) {}
+}
+
+fn init_log(verbose: bool) {
+    if verbose && log::set_logger(&StderrLog).is_ok() {
+        log::set_max_level(log::LevelFilter::Info);
+    }
 }
 
 fn read_lines(path: &PathBuf) -> anyhow::Result<Vec<String>> {
@@ -104,7 +137,8 @@ fn read_lines(path: &PathBuf) -> anyhow::Result<Vec<String>> {
 }
 
 async fn check(args: CheckArgs) -> anyhow::Result<()> {
-    let checker = Checker::new(options(&args.common)?, api_key());
+    init_log(args.common.verbose);
+    let checker = checker(&args.common)?;
     let recent = match &args.recent {
         Some(path) => read_lines(path)?
             .into_iter()
@@ -134,10 +168,18 @@ async fn check(args: CheckArgs) -> anyhow::Result<()> {
         }
         (None, None) => bail!("give a comment text or --file"),
     };
-    for c in &comments {
-        let verdict = checker.check(c, &recent).await?;
-        println!("{}", serde_json::to_string(&verdict)?);
+    let started = std::time::Instant::now();
+    let mut verdicts = stream::iter(&comments)
+        .map(|c| checker.check(c, &recent))
+        .buffered(CONCURRENCY);
+    while let Some(verdict) = verdicts.next().await {
+        println!("{}", serde_json::to_string(&verdict?)?);
     }
+    log::info!(
+        "judged {} comment(s) in {} ms",
+        comments.len(),
+        started.elapsed().as_millis()
+    );
     Ok(())
 }
 
