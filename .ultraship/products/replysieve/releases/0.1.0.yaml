@@ -75,7 +75,7 @@ acceptance:
     - "README first screen covers what it is, install, a short example, and MCP setup for Claude Code and Codex"
     - "NOTICE reads Copyright (c) 2026 Aakash Pawar (zeroonething); Cargo.toml license is MIT OR Apache-2.0"
     - "CI runs tests, clippy, fmt and cargo-deny on every push and PR, with actions pinned to commit SHAs and read-only default permissions"
-    - "Before the repository goes public: full-history secret scan, secret scanning with push protection, Actions approval required for first-time contributors, actions pinned to SHAs, read-only workflow permissions, no secrets on fork PRs, branch protection with force-push blocked on main and develop, publish token in an approval-gated release environment, hardware-key 2FA on GitHub and crates.io, and cargo package --list reviewed"
+    - "Before the repository goes public: full-history secret scan, secret scanning with push protection, Actions approval required for first-time contributors, actions pinned to SHAs, read-only workflow permissions, no secrets on fork PRs, branch protection with force-push blocked on main and develop, publish token in an approval-gated release environment, and cargo package --list reviewed"
     - "`cargo publish --dry-run` passes and the `cargo package --list` contents are reviewed before publishing"
     - "Tag v0.1.0 matches the Cargo.toml version, and the GitHub release notes come from CHANGELOG"
 delivery:
