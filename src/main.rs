@@ -1,3 +1,5 @@
+mod mcp;
+
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 use futures_util::{StreamExt, stream};
@@ -21,6 +23,8 @@ struct Cli {
 enum Cmd {
     /// Judge one comment, or a JSONL batch with --file.
     Check(CheckArgs),
+    /// Serve check_comment and check_batch over MCP on stdio.
+    Mcp(Common),
 }
 
 #[derive(Args)]
@@ -188,6 +192,13 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.cmd {
         Cmd::Check(args) => check(args).await,
+        Cmd::Mcp(common) => {
+            init_log(common.verbose);
+            match checker(&common) {
+                Ok(c) => mcp::serve(c).await,
+                Err(e) => Err(e),
+            }
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

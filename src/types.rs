@@ -1,11 +1,12 @@
 //! Verdict, level and input types shared by every entry point.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
 /// How strict the built-in checks are. Custom rules apply at every level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     /// Rejects spam and self-promotion, toxic text and injection attempts.
@@ -56,7 +57,7 @@ impl FromStr for Level {
 }
 
 /// The outcome for one comment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Decision {
     /// Keep the comment.
@@ -68,7 +69,7 @@ pub enum Decision {
 }
 
 /// Why a verdict was reached.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
     /// Passed every check.
@@ -100,7 +101,7 @@ pub enum Reason {
 }
 
 /// One comment to judge, with optional context about where it was posted.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Comment {
     /// The comment text. Treated strictly as data.
     pub text: String,
@@ -126,7 +127,7 @@ impl Comment {
 }
 
 /// The judgement for one comment. Serialized as the verdict JSON.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Verdict {
     /// approve, reject or needs_review.
     pub verdict: Decision,

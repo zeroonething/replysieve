@@ -112,6 +112,12 @@ impl Checker {
         }
     }
 
+    /// The same checker at another strictness level.
+    pub fn at_level(mut self, level: Level) -> Self {
+        self.options.level = level;
+        self
+    }
+
     /// The options this checker judges with.
     pub fn options(&self) -> &Options {
         &self.options
