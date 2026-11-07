@@ -108,7 +108,7 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T06
   summary: Tests proving pre-check latency and that no comment text reaches disk or logs.
   why_required: Both are non-functional promises in the contract and need executable proof.
-  status: todo
+  status: done
   depends_on:
   - US-REPLYSIEVE-0.1.0-T02
   acceptance_criteria:
@@ -117,7 +117,10 @@ tasks:
   files:
   - tests/precheck_latency.rs
   - tests/no_content_logged.rs
-  evidence: []
+  evidence:
+  - "cargo test --release --test precheck_latency -- --nocapture \u2014 precheck over 13590 calls (302 labeled texts x 3 levels x 3 presets x 5, 50 recent texts): p50 80.4 us, p99 634.3 us, max 16.1 ms; passed (p99 < 5 ms). Debug build p99 449 us. Development machine: macOS, Apple Silicon"
+  - "cargo test --test no_content_logged \u2014 1 passed: 6 verbose check runs (model path, precheck path, fallback, all models failing), a batch with a bad line, and a verbose MCP session, all with a unique marker in the comment; marker absent from stderr and stdout of every run, verbose runs did log events, and no file under the run's HOME/TMPDIR/cwd contains it"
+  - "cargo clippy --all-targets -- -D warnings \u2014 exit 0; cargo fmt --check \u2014 exit 0"
 - id: US-REPLYSIEVE-0.1.0-T07
   summary: Library docs with runnable example, README, licenses, NOTICE, contributor and security docs, CHANGELOG.
   why_required: A published crate without docs, licenses and README fails the operational criteria.
