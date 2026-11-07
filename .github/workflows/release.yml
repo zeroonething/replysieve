@@ -1,0 +1,135 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Read-only by default. Only `release` (creates the GitHub release) and
+# `thank` (comments on contributors' pull requests and issues) get more.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The tag is the only thing that says which version this is; nothing else
+  # checks it against the crate, the branch or the changelog.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Releases are cut from main, which takes only reviewed merges from develop.
+      - name: Tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main"
+            exit 1
+          fi
+      - name: Tag matches Cargo.toml and CHANGELOG
+        run: |
+          cargo_version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          tag_version="${GITHUB_REF_NAME#v}"
+          echo "Cargo.toml: $cargo_version"
+          echo "tag:        $tag_version"
+          if [ "$cargo_version" != "$tag_version" ]; then
+            echo "::error::tag $tag_version does not match Cargo.toml $cargo_version"
+            exit 1
+          fi
+          heading=$(grep -m1 '^## \[' CHANGELOG.md || true)
+          echo "CHANGELOG:  $heading"
+          case "$heading" in
+            "## [$tag_version]"*) ;;
+            *) echo "::error::the first CHANGELOG.md section is not [$tag_version]"; exit 1 ;;
+          esac
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo package --locked --list
+      - run: cargo publish --dry-run --locked
+
+  release:
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The body is this version's CHANGELOG section (verify checked it is the
+      # first one), then the contributors since the previous release tag.
+      - name: Notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk '/^## \[/{n++; next} n==1 && !/^\[[^]]*\]:/' CHANGELOG.md > notes.md
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            echo "contributors since $previous"
+            { echo; bash .github/contributors.sh section "$previous" "$GITHUB_REF_NAME"; } >> notes.md
+          fi
+          cat notes.md
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          name: ${{ github.ref_name }}
+          body_path: notes.md
+          # A tag with a suffix (v0.2.0-rc.1) is a release candidate.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # "Released in vX.Y.Z" on each outside contributor's pull request and the
+  # issues it closed. Its own job, so the one token that can comment holds
+  # nothing else. Not for a release candidate.
+  thank:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Thank contributors
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/contributors.sh thank "$GITHUB_REF_NAME"
+
+  # The token lives only in the `crates-io` environment, which should require
+  # a reviewer and allow only v* tags to deploy.
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -1,0 +1,21 @@
+# gitleaks configuration for the `secrets` job in .github/workflows/ci.yml,
+# which scans the checked-out tree. The default rules apply in full.
+
+title = "replysieve"
+
+[extend]
+useDefault = true
+
+# A crates.io API token, which is what publishing replysieve takes. It lives
+# only in the `crates-io` environment's secrets, so one in the tree is always
+# a mistake.
+[[rules]]
+id = "crates-io-api-token"
+description = "crates.io API token"
+regex = '''\bcio[a-zA-Z0-9]{32}\b'''
+keywords = ["cio"]
+
+# Build output, never committed (.gitignore), present only in a local scan.
+[[allowlists]]
+description = "cargo build output"
+paths = ['''(^|/)target/''']
