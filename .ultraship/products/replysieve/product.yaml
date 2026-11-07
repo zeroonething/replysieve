@@ -1,0 +1,62 @@
+id: replysieve
+name: replysieve
+classification: independent-product
+vision: >
+  Any comment section, on any platform, keeps real comments and drops the junk,
+  judged in a fraction of a second by small decision models.
+users:
+  - Aakash, building launchladder.lol (first user)
+  - An indie founder whose review or comment section fills with "great product!" and spam
+  - Someone using Claude Code or Codex to clean a community mod queue
+problems:
+  - Generic, spammy and toxic comments drown out useful ones.
+  - Judging each comment with a chat LLM is slow and expensive.
+  - Every platform has different norms, so one fixed filter does not fit.
+outcomes:
+  - Each comment gets approve, reject or needs-review, with a reason, in under a second.
+requirements:
+  - Judge one comment or a batch; input is text plus optional context (post or product title and description, parent comment)
+  - Verdict is approve, reject or needs_review, with a reason label and the model's confidence
+  - Strictness levels light, medium and heavy, default medium. Light rejects spam/promo, toxic and injection attempts. Medium also rejects generic low-effort comments. Heavy also rejects off-topic comments and requires something specific to the post or product
+  - Custom rules always apply at every level; the level only changes the built-in checks
+  - Built-in presets (comments, product-review, launch-thread) plus custom plain-English rules in a config file
+  - Free pre-checks before any model call (minimum length per level, stock-phrase list, duplicates against recent texts the caller passes in)
+  - Guard against comments that try to instruct the moderator
+  - OpenRouter connector, decision models only, user's own API key, an ordered model list passed to OpenRouter for fallback
+  - Four ways in from one core - Rust library, CLI with JSON output, HTTP server, MCP server
+  - An eval command plus about 300 labeled example comments
+constraints:
+  - Decision models only, via OpenRouter only
+  - Stateless; never stores or logs comment content
+  - English only
+  - Single Rust binary
+  - License MIT OR Apache-2.0; contributions signed off with DCO
+  - Repository github.com/zeroonething/replysieve (default branch develop); code in live/replysieve, project docs in live-project-files/replysieve
+public_contract: >
+  CLI commands and verdict JSON, HTTP endpoints, MCP tool names, the Rust library API,
+  and the config file format.
+deployment_context: Runs on the user's machine or their own server. No hosted service.
+success_measures:
+  - At medium, on the labeled set, catches 95% or more of junk and wrongly rejects under 5% of good comments
+  - launchladder uses it in production
+  - Pre-checks answer in under 5 ms
+non_goals:
+  - images or video
+  - platform connectors (deleting, hiding or banning stays with the caller)
+  - its own agent loop
+  - chat LLMs
+  - providers other than OpenRouter
+  - hosted SaaS or dashboard
+  - human review queue UI
+  - training a model
+  - languages other than English
+assumptions:
+  - Jev via OpenRouter returns probabilities usable as confidence
+  - OpenRouter's model-list fallback works for decision models
+  - About 300 examples are enough to tune the level thresholds
+  - Starting thresholds (approve at 60% / 80% / 90% confidence, minimum 1 / 4 / 8 words for light / medium / heavy) are guesses to tune on the labeled set
+  - The model path typically answers in under 1 second
+  - launchladder can call it over HTTP
+mvp_boundary: >
+  One developer runs one comment through replysieve at medium strictness, via CLI or MCP,
+  and gets a correct verdict with a reason from a decision model on OpenRouter.
