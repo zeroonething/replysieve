@@ -1,0 +1,37 @@
+id: US-REPLYSIEVE-0.1.0-I01
+timestamp: 2026-11-08T00:00:00Z
+category:
+  - release-level
+trigger: Aakash said hardware security keys are not used on any of their accounts and will not be in future.
+evidence:
+  - "Aakash, in session 2026-11-08: no hardware key ever used; remove the requirement totally."
+before:
+  scope:
+    - Pre-public checklist item - hardware-key 2FA on GitHub and crates.io
+  assumptions:
+    - The release owner uses hardware security keys for 2FA.
+  implementation: Pre-public operational acceptance listed hardware-key 2FA among the repository hardening steps.
+change:
+  summary: Drop the hardware-key 2FA item from the pre-public operational acceptance criterion. All other hardening items stay.
+  added: []
+  removed:
+    - hardware-key 2FA on GitHub and crates.io
+  deferred: []
+  replaced: []
+impact:
+  products:
+    - replysieve
+  versions:
+    - 0.1.0
+  tasks: []
+  dependencies: []
+  resource_effect: None; the item was a manual check outside the code.
+versioning:
+  previous_target: 0.1.0
+  new_target: 0.1.0
+  consequence: no-version-change
+approval:
+  source: user
+  reference: Answered in session 2026-11-08 during /goal replysieve 0.1.0 setup.
+canonical_updates:
+  - products/replysieve/releases/0.1.0.yaml

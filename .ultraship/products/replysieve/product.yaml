@@ -22,7 +22,7 @@ requirements:
   - Built-in presets (comments, product-review, launch-thread) plus custom plain-English rules in a config file
   - Free pre-checks before any model call (minimum length per level, stock-phrase list, duplicates against recent texts the caller passes in)
   - Guard against comments that try to instruct the moderator
-  - OpenRouter connector, decision models only, user's own API key, an ordered model list passed to OpenRouter for fallback
+  - OpenRouter connector, decision models only, user's own API key, an ordered model list that replysieve tries in order
   - Four ways in from one core - Rust library, CLI with JSON output, HTTP server, MCP server
   - An eval command plus about 300 labeled example comments
 constraints:
@@ -52,7 +52,6 @@ non_goals:
   - languages other than English
 assumptions:
   - Jev via OpenRouter returns probabilities usable as confidence
-  - OpenRouter's model-list fallback works for decision models
   - About 300 examples are enough to tune the level thresholds
   - Starting thresholds (approve at 60% / 80% / 90% confidence, minimum 1 / 4 / 8 words for light / medium / heavy) are guesses to tune on the labeled set
   - The model path typically answers in under 1 second

@@ -1,0 +1,48 @@
+id: US-REPLYSIEVE-0.1.0-I02
+timestamp: 2026-11-08T12:00:00Z
+category:
+  - implementation-level
+  - dependency-level
+trigger: Building the OpenRouter connector showed the decisions endpoint does not fall back across a models list.
+evidence:
+  - "POST https://openrouter.ai/api/alpha/decisions with model nonexistent/model-x and models [nonexistent/model-x, ~typesafe/jev-latest] returned HTTP 400 Model nonexistent/model-x does not exist"
+  - "Jev is served only on /api/alpha/decisions; /api/v1/chat/completions returns 400 decisions model cannot be used with the chat/completions endpoint"
+  - "Decisions request shape is model, state, questions (choice with criteria as a map of option to description, noul); the response carries model, answers with probabilities per option and noul values, confirmed with a live call"
+  - "US-REPLYSIEVE-0.1.0-T02 tests falls_back_to_next_model and all_models_failing_needs_review pass with replysieve trying each model in order"
+before:
+  scope:
+    - OpenRouter connector for decision models only, API key from an environment variable, ordered model list passed to OpenRouter for fallback, default model ~typesafe/jev-latest
+  assumptions:
+    - OpenRouter's model-list fallback works for decision models
+    - The exact request and response shape for Jev through OpenRouter is unknown
+  implementation: Send the model list to OpenRouter and let it fall back.
+change:
+  summary: replysieve tries the configured models one by one itself. The acceptance criterion on fallback is unchanged. The request shape question and the fallback risk are resolved.
+  added: []
+  removed:
+    - Assumption that OpenRouter's model-list fallback works for decision models
+    - Open question on the Jev request and response shape
+    - Risk that OpenRouter's model-list fallback misbehaves for decision models
+  deferred: []
+  replaced:
+    - "ordered model list passed to OpenRouter for fallback -> ordered model list tried in order by replysieve"
+impact:
+  products:
+    - replysieve
+  versions:
+    - 0.1.0
+  tasks:
+    - US-REPLYSIEVE-0.1.0-T02
+  dependencies:
+    - OpenRouter /api/alpha/decisions endpoint
+  resource_effect: None; already implemented and tested.
+versioning:
+  previous_target: 0.1.0
+  new_target: 0.1.0
+  consequence: no-version-change
+approval:
+  source: user
+  reference: Aakash approved recording it in session 2026-11-08.
+canonical_updates:
+  - products/replysieve/releases/0.1.0.yaml
+  - products/replysieve/product.yaml
