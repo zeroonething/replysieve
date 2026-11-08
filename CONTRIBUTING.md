@@ -31,7 +31,8 @@ this.
 ## Pull requests
 
 Open pull requests against the `develop` branch. CI runs tests, clippy, fmt,
-cargo-deny, a secret scan, and a build and smoke test of the Docker image on
+cargo-deny, a secret scan, a build and smoke test of the Docker image, and the
+WebAssembly build of the npm package with its Node and workerd test suites on
 every pull request.
 
 ## Releases
@@ -39,15 +40,23 @@ every pull request.
 Releases run themselves from `main`. To cut one:
 
 1. On `develop`, set the new `version` in `Cargo.toml` (run `cargo build` so
-   `Cargo.lock` follows) and add its section at the top of `CHANGELOG.md`.
+   `Cargo.lock` follows) and the same `version` in `npm/package.json` (and
+   `npm/package-lock.json`), and add its section at the top of `CHANGELOG.md`.
 2. Merge `develop` into `main`.
 
 The push to `main` starts `.github/workflows/release.yml`. When that version has
 no release yet, it runs the full test suite, creates the `vX.Y.Z` tag and the
-GitHub release from the CHANGELOG section, publishes to crates.io, and pushes
-the `linux/amd64` and `linux/arm64` image to `ghcr.io/zeroonething/replysieve`
-as `X.Y.Z`, `X.Y` and `latest`. A push to `main` without a version bump
-releases nothing.
+GitHub release from the CHANGELOG section, publishes to crates.io, publishes
+the `@zeroonething/replysieve` npm package with provenance, and pushes the
+`linux/amd64` and `linux/arm64` image to `ghcr.io/zeroonething/replysieve` as
+`X.Y.Z`, `X.Y` and `latest`. A push to `main` without a version bump releases
+nothing, and the workflow fails if the two version fields differ.
+
+The npm publish runs in the `npm` environment, which deploys only from `main`.
+The first publish uses the `NPM_TOKEN` secret of that environment. After it,
+set up trusted publishing on npmjs.com for this repository and `release.yml`
+(environment `npm`); npm then uses a short-lived OIDC token and the stored
+token can be deleted.
 
 Every step first checks whether its output already exists, so a release that
 stops half way is finished by re-running the failed jobs, or with "Run workflow"

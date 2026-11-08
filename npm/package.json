@@ -1,0 +1,57 @@
+{
+  "name": "@zeroonething/replysieve",
+  "version": "0.3.0",
+  "description": "Judge comments in a fraction of a second: approve, reject or needs-review with a reason, from small decision models on OpenRouter. WebAssembly build for Cloudflare Workers and Node.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zeroonething/replysieve.git",
+    "directory": "npm"
+  },
+  "homepage": "https://github.com/zeroonething/replysieve#use-it-from-javascript",
+  "bugs": "https://github.com/zeroonething/replysieve/issues",
+  "keywords": [
+    "moderation",
+    "comments",
+    "spam",
+    "openrouter",
+    "cloudflare-workers",
+    "wasm"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "workerd": "./worker.js",
+      "worker": "./worker.js",
+      "node": "./node.js"
+    }
+  },
+  "types": "./index.d.ts",
+  "files": [
+    "index.d.ts",
+    "node.js",
+    "worker.js",
+    "pkg/replysieve.d.ts",
+    "pkg/replysieve.js",
+    "pkg/replysieve_bg.wasm",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/node.test.mjs test/golden.test.mjs",
+    "test:workerd": "node --test test/workerd.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.156.0"
+  }
+}
