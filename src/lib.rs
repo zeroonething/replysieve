@@ -55,6 +55,9 @@ use std::time::Instant;
 /// The default OpenRouter decision model.
 pub const DEFAULT_MODEL: &str = "~typesafe/jev-latest";
 
+/// Comments judged at once by [`Checker::check_batch`].
+const BATCH_CONCURRENCY: usize = 8;
+
 /// Environment variable holding the OpenRouter API key.
 pub const API_KEY_ENV: &str = "OPENROUTER_API_KEY";
 
@@ -104,6 +107,10 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+fn normalize_all(texts: &[String]) -> Vec<String> {
+    texts.iter().map(|t| normalize(t)).collect()
+}
 
 /// Judges comments with one set of options.
 #[derive(Debug, Clone)]
@@ -168,11 +175,15 @@ impl Checker {
     /// Run only the free pre-checks. `recent` holds texts recently posted by
     /// the same author or thread; an identical comment is a duplicate.
     pub fn precheck(&self, comment: &Comment, recent: &[String]) -> Option<Verdict> {
+        self.precheck_normalized(comment, &normalize_all(recent))
+    }
+
+    /// [`Checker::precheck`] with `recent` already normalized.
+    fn precheck_normalized(&self, comment: &Comment, recent: &[String]) -> Option<Verdict> {
         let start = Instant::now();
-        let recent: Vec<String> = recent.iter().map(|r| normalize(r)).collect();
         let reason = self
             .prechecks
-            .run(&comment.text, self.options.level, &recent)?;
+            .run(&comment.text, self.options.level, recent)?;
         Some(Verdict {
             verdict: Decision::Reject,
             reason,
@@ -184,12 +195,44 @@ impl Checker {
         })
     }
 
+    /// Judge many comments, a few at a time. Verdicts come back in input order.
+    pub async fn check_batch(
+        &self,
+        comments: &[Comment],
+        recent: &[String],
+    ) -> Result<Vec<Verdict>, Error> {
+        use futures_util::{StreamExt, stream};
+        // Collected first: a stream holding the mapping closure is not provably
+        // Send to rustc, and axum handlers and MCP tools need it to be.
+        // Normalized once for the whole batch, not once per comment.
+        let recent = normalize_all(recent);
+        let checks: Vec<_> = comments
+            .iter()
+            .map(|c| self.check_normalized(c, &recent))
+            .collect();
+        stream::iter(checks)
+            .buffered(BATCH_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect()
+    }
+
     /// Judge one comment: free pre-checks first, then the models in order.
     /// When no model answers, the verdict is needs_review with reason
     /// model_unavailable, never a silent approve.
     pub async fn check(&self, comment: &Comment, recent: &[String]) -> Result<Verdict, Error> {
+        self.check_normalized(comment, &normalize_all(recent)).await
+    }
+
+    /// [`Checker::check`] with `recent` already normalized.
+    async fn check_normalized(
+        &self,
+        comment: &Comment,
+        recent: &[String],
+    ) -> Result<Verdict, Error> {
         let start = Instant::now();
-        if let Some(v) = self.precheck(comment, recent) {
+        if let Some(v) = self.precheck_normalized(comment, recent) {
             return Ok(v);
         }
         let client = self.client.as_ref().ok_or(Error::MissingApiKey)?;

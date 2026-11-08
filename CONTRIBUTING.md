@@ -31,7 +31,27 @@ this.
 ## Pull requests
 
 Open pull requests against the `develop` branch. CI runs tests, clippy, fmt,
-cargo-deny and a secret scan on every pull request.
+cargo-deny, a secret scan, and a build and smoke test of the Docker image on
+every pull request.
+
+## Releases
+
+Releases run themselves from `main`. To cut one:
+
+1. On `develop`, set the new `version` in `Cargo.toml` (run `cargo build` so
+   `Cargo.lock` follows) and add its section at the top of `CHANGELOG.md`.
+2. Merge `develop` into `main`.
+
+The push to `main` starts `.github/workflows/release.yml`. When that version has
+no release yet, it runs the full test suite, creates the `vX.Y.Z` tag and the
+GitHub release from the CHANGELOG section, publishes to crates.io, and pushes
+the `linux/amd64` and `linux/arm64` image to `ghcr.io/zeroonething/replysieve`
+as `X.Y.Z`, `X.Y` and `latest`. A push to `main` without a version bump
+releases nothing.
+
+Every step first checks whether its output already exists, so a release that
+stops half way is finished by re-running the failed jobs, or with "Run workflow"
+on `main`. Once the tag exists, everything is built from the tagged commit.
 
 ## Developer Certificate of Origin
 

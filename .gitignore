@@ -1,8 +1,8 @@
 node_modules/
 .DS_Store
 
-# UltraShip: transient deploy/publish hook output
-.ultraship/products/*/evidence/
+# UltraShip: local-only planning workspace, never pushed
+.ultraship/
 
 # Rust
 /target/

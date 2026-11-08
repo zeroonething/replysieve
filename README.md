@@ -5,7 +5,8 @@ a second and tells you to approve it, reject it, or send it for review, with a
 reason. It runs free checks first and then asks a small decision model on
 OpenRouter, so it is much cheaper and faster than asking a chat LLM.
 
-It works as a CLI, an MCP server for coding agents, and a Rust library.
+It works as a CLI, an HTTP server (also as a Docker image), an MCP server for
+coding agents, and a Rust library.
 
 ```sh
 cargo install replysieve
@@ -28,6 +29,151 @@ codex mcp add replysieve --env OPENROUTER_API_KEY=sk-or-... -- replysieve mcp
 
 Then ask your agent something like "check these comments with replysieve at heavy
 strictness". It gets two tools, `check_comment` and `check_batch`.
+
+## Run it as an HTTP server
+
+`replysieve serve` puts the same checks behind HTTP, so your backend can call
+them in any language. With Docker:
+
+```sh
+export OPENROUTER_API_KEY=sk-or-...
+export REPLYSIEVE_TOKEN=$(openssl rand -hex 32)   # callers send this as a bearer token
+
+docker run -d -p 8080:8080 -e OPENROUTER_API_KEY -e REPLYSIEVE_TOKEN \
+  ghcr.io/zeroonething/replysieve:0.2.0
+```
+
+The image is about 44 MB, runs on linux/amd64 and linux/arm64 as a non-root
+user, and listens on port 8080. It is tagged `0.2.0`, `0.2` and `latest`. To
+change flags, put the whole command after the image name. A config file can be
+mounted:
+
+```sh
+docker run -d -p 8080:8080 -e OPENROUTER_API_KEY -e REPLYSIEVE_TOKEN \
+  -v "$PWD/replysieve.toml:/replysieve.toml:ro" \
+  ghcr.io/zeroonething/replysieve:0.2.0 \
+  serve --bind 0.0.0.0:8080 --level heavy --config /replysieve.toml
+```
+
+Or without Docker:
+
+```sh
+cargo install replysieve
+replysieve serve   # listens on http://127.0.0.1:8080
+```
+
+`serve` takes `--bind` plus the same `--level`, `--preset`, `--config`,
+`--model` and `-v` flags as `check`. It needs `OPENROUTER_API_KEY` and will not
+start without it.
+
+Judge one comment:
+
+```sh
+curl -s http://127.0.0.1:8080/v1/check \
+  -H "Authorization: Bearer $REPLYSIEVE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Does offline sync merge edits if I change the same task on two phones?",
+       "title": "Taskly, a todo app with offline sync"}'
+```
+
+```json
+{"verdict":"approve","reason":"useful","confidence":1.0,"level":"medium","model":"typesafe/jev-1.14-20261014","latency_ms":712}
+```
+
+The body takes `text` and, optionally, `title`, `description`, `parent`,
+`level` and `recent` (a list of recent texts; an identical comment is a
+duplicate). `level` overrides the server's level for that request.
+
+Judge up to 100 comments at once. Verdicts come back in the same order:
+
+```sh
+curl -s http://127.0.0.1:8080/v1/check/batch \
+  -H "Authorization: Bearer $REPLYSIEVE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"comments": [{"text": "Great product, great job, well done!"}, {"text": "first"}]}'
+```
+
+```json
+{"verdicts":[{"verdict":"reject","reason":"stock_phrase","confidence":1.0,"level":"medium","model":null,"latency_ms":0},{"verdict":"reject","reason":"too_short","confidence":1.0,"level":"medium","model":null,"latency_ms":0}]}
+```
+
+Each entry in `comments` takes `text` and, optionally, `title`, `description`
+and `parent`. `level` and `recent` go next to `comments` and apply to all of
+them.
+
+### Call it from your backend
+
+JavaScript (Node 18 or later):
+
+```js
+async function checkComment(text, title) {
+  const res = await fetch("http://127.0.0.1:8080/v1/check", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.REPLYSIEVE_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text, title }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`replysieve: ${body.error}`);
+  return body; // { verdict, reason, confidence, level, model, latency_ms }
+}
+```
+
+Python, with `requests`:
+
+```python
+import os
+import requests
+
+def check_comment(text, title=None):
+    resp = requests.post(
+        "http://127.0.0.1:8080/v1/check",
+        headers={"Authorization": f"Bearer {os.environ['REPLYSIEVE_TOKEN']}"},
+        json={"text": text, "title": title},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()  # {"verdict": ..., "reason": ..., ...}
+```
+
+Publish `approve`, drop `reject`, and hold `needs_review` for a person.
+
+### Endpoints and errors
+
+| Request | Token needed | Response |
+| --- | --- | --- |
+| `POST /v1/check` | yes, when set | one verdict |
+| `POST /v1/check/batch` | yes, when set | `{"verdicts": [...]}` in input order |
+| `GET /healthz` | no | `{"status":"ok","version":"0.2.0"}` |
+
+Requests must send `Content-Type: application/json`. Every error has a JSON
+body, `{"error": "..."}`.
+
+| Status | When |
+| --- | --- |
+| 400 | the body is not valid JSON |
+| 401 | the bearer token is missing or wrong |
+| 413 | the body is larger than 1 MiB |
+| 415 | `Content-Type` is not `application/json` |
+| 422 | a field is missing or has the wrong type, or a batch has more than 100 comments |
+
+### Security
+
+- With `REPLYSIEVE_TOKEN` set, every `/v1` request needs
+  `Authorization: Bearer <token>`. Without a token, anyone who can reach the
+  port can spend your OpenRouter credits.
+- `replysieve serve` listens on 127.0.0.1 by default. It refuses any other
+  address unless `REPLYSIEVE_TOKEN` is set, or you pass `--insecure-no-auth`
+  because something in front of it already authenticates callers. The Docker
+  image listens on 0.0.0.0, so it needs a token too.
+- There is no CORS. Call it from your server, never from browser JavaScript,
+  where anyone could read the token.
+- It speaks plain HTTP. Put TLS and rate limiting in a reverse proxy such as
+  nginx or Caddy.
+- It shuts down cleanly on Ctrl-C or SIGTERM, so `docker stop` lets requests in
+  flight finish.
 
 ## Strictness levels
 
@@ -112,7 +258,9 @@ println!("{:?} {:?}", verdict.verdict, verdict.reason);
 # }
 ```
 
-Docs are on [docs.rs/replysieve](https://docs.rs/replysieve).
+`checker.check_batch(&comments, &recent)` judges many comments at once and
+returns the verdicts in input order. Docs are on
+[docs.rs/replysieve](https://docs.rs/replysieve).
 
 ## Accuracy
 
@@ -136,13 +284,16 @@ that the pipeline works, not as a promise for your own comments. Run
 ## Privacy
 
 replysieve is stateless. It never writes comment text to disk or logs, at any
-verbosity (`-v` prints only timing and model fallback events). Comment text goes
+verbosity. `-v` prints only timing and model fallback events, and for `serve` one
+line per request with the method, path, status and latency. Comment text goes
 only to OpenRouter, using your own key.
 
-## Not in 0.1.0
+## Not in 0.2.0
 
-An HTTP server and Docker image are planned for 0.2.0. English only. No images or
-video. replysieve gives verdicts and leaves deleting, hiding or banning to you.
+English only. No images or video. No hosted service: you run replysieve yourself.
+replysieve gives verdicts and leaves deleting, hiding or banning to you. Recipes
+for specific platforms and a way to test your own rules against examples come
+later.
 
 ## License
 
