@@ -142,26 +142,29 @@ fn router(app: Arc<App>) -> Router {
 }
 
 /// Resolves on Ctrl-C or SIGTERM, so `docker stop` drains in-flight requests.
-async fn shutdown() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c().await.ok();
-    };
-    #[cfg(unix)]
-    let term = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut s) => {
-                s.recv().await;
-            }
-            Err(_) => std::future::pending().await,
+/// The handlers are installed when this is called, not when the future is
+/// first polled: called before the server listens, a signal that arrives right
+/// after startup still shuts it down cleanly instead of killing the process.
+#[cfg(unix)]
+fn shutdown() -> anyhow::Result<impl Future<Output = ()>> {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut term = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
+    let mut int = signal(SignalKind::interrupt()).context("cannot handle SIGINT")?;
+    Ok(async move {
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
         }
-    };
-    #[cfg(not(unix))]
-    let term = std::future::pending::<()>();
-    tokio::select! {
-        _ = ctrl_c => {}
-        _ = term => {}
-    }
-    log::info!("shutting down");
+        log::info!("shutting down");
+    })
+}
+
+#[cfg(not(unix))]
+fn shutdown() -> anyhow::Result<impl Future<Output = ()>> {
+    Ok(async {
+        tokio::signal::ctrl_c().await.ok();
+        log::info!("shutting down");
+    })
 }
 
 /// Serve HTTP on `bind` until Ctrl-C or SIGTERM.
@@ -184,6 +187,7 @@ pub async fn serve(
              if something in front of replysieve already authenticates callers"
         );
     }
+    let shutdown = shutdown()?;
     let listener = tokio::net::TcpListener::bind(bind)
         .await
         .with_context(|| format!("cannot listen on {bind}"))?;
@@ -193,7 +197,7 @@ pub async fn serve(
     }
     let app = Arc::new(App { checker, token });
     axum::serve(listener, router(app))
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(shutdown)
         .await?;
     Ok(())
 }
