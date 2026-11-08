@@ -375,7 +375,8 @@ jobs:
             tag="release-${VERSION%.*}"
           fi
           echo "publishing $VERSION with dist-tag $tag"
-          npm publish "dist/zeroonething-replysieve-$VERSION.tgz" --provenance --access public --tag "$tag"
+          # "./" so npm reads a file path, not GitHub shorthand (user/repo).
+          npm publish "./dist/zeroonething-replysieve-$VERSION.tgz" --provenance --access public --tag "$tag"
 
   # One image per architecture on its own native runner, pushed as
   # <version>-<arch>, then joined into one multi-arch tag below.
