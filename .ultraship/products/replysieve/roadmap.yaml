@@ -3,12 +3,12 @@ status: active
 versions:
   - version: 0.1.0
     outcome: >
-      A developer or an agent (Claude Code, Codex) judges one comment or a batch from the
-      CLI or MCP and gets approve, reject or needs-review with a reason, at light, medium or
-      heavy strictness, using a built-in preset or their own rules, through a decision model
-      on OpenRouter, with accuracy shown on a labeled test set. Installable with cargo install.
+      A developer or an agent (Claude Code, Codex) judges one comment or a batch from the CLI or MCP
+      and gets approve, reject or needs-review with a reason, at light, medium or heavy strictness,
+      using a built-in preset or their own rules, through a decision model on OpenRouter, with
+      accuracy shown on a labeled test set. Installable with cargo install.
     detail: specified
-    status: planned
+    status: released
   - version: 0.2.0
     outcome: >
       An app (launchladder first) moderates every comment as it is submitted by calling a
@@ -17,14 +17,14 @@ versions:
     status: planned
   - version: 0.3.0
     outcome: >
-      A community owner tests their own rules against their own example comments before
-      going live, sees which rule fired on each one, and follows recipes for Reddit mod
-      queues, Discord and website comment forms.
+      A community owner tests their own rules against their own example comments before going live,
+      sees which rule fired on each one, and follows recipes for Reddit mod queues, Discord and
+      website comment forms.
     detail: outline
     status: planned
   - version: 0.4.0
     outcome: >
-      Anyone installs replysieve in one step through Homebrew, the MCP server registry or a
-      prebuilt binary for macOS, Linux and Windows.
+      Anyone installs replysieve in one step through Homebrew, the MCP server registry or a prebuilt
+      binary for macOS, Linux and Windows.
     detail: hypothesis
     status: planned

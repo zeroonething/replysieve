@@ -1,129 +1,163 @@
 product: replysieve
 version: 0.1.0
-status: planned
+status: released
 release_type: minor
 outcome:
-  user_can: >
-    Install replysieve with cargo install, run one comment or a batch through it from the CLI
-    or from an agent over MCP, choose light, medium or heavy strictness, use a built-in preset
-    or their own plain-English rules, and get approve, reject or needs_review with a reason
-    and the model's confidence from a decision model on OpenRouter.
-  business_value: >
-    Puts replysieve publicly on GitHub and crates.io under the zeroonething org, claims the
-    name, and gives launchladder and agent users a cheap, fast way to judge comments before
-    0.2.0 adds the HTTP server.
-  evidence_of_value: >
-    The eval command shows, at medium on the labeled set, 95% or more of junk caught and
-    under 5% of good comments wrongly rejected, and a real comment judged from Claude Code
-    and from Codex over MCP returns the expected verdict.
+  user_can: 'Install replysieve with cargo install, run one comment or a batch through it from the CLI or from an agent over MCP, choose light, medium or heavy strictness, use a built-in preset or their own plain-English rules, and get approve, reject or needs_review with a reason and the model''s confidence from a decision model on OpenRouter.
+
+    '
+  business_value: 'Puts replysieve publicly on GitHub and crates.io under the zeroonething org, claims the name, and gives launchladder and agent users a cheap, fast way to judge comments before 0.2.0 adds the HTTP server.
+
+    '
+  evidence_of_value: 'The eval command shows, at medium on the labeled set, 95% or more of junk caught and under 5% of good comments wrongly rejected, and a real comment judged from Claude Code and from Codex over MCP returns the expected verdict.
+
+    '
 scope:
   included:
-    - Rust crate that is both the library (public check API, documented on docs.rs) and the replysieve binary
-    - "CLI check command for one comment or a JSONL batch, printing verdict JSON (verdict, reason, confidence, level, model, latency_ms, matched rule when one fired)"
-    - Optional context inputs - post or product title and description, parent comment
-    - Strictness levels light, medium, heavy (default medium) as defined in product.yaml
-    - Built-in presets comments, product-review, launch-thread
-    - Custom plain-English rules from a TOML config file, enforced at every level
-    - Free pre-checks with no model call - minimum length per level, stock-phrase list, duplicates against recent texts passed by the caller
-    - Injection guard - comment text sent strictly as data, plus a check that rejects text trying to instruct the moderator
-    - OpenRouter connector for decision models only, API key from an environment variable, ordered model list tried in order by replysieve, default model ~typesafe/jev-latest
-    - When no model answers, the verdict is needs_review with reason model_unavailable (never a silent approve)
-    - MCP server over stdio exposing check_comment and check_batch tools
-    - About 300 labeled example comments across reviews, Reddit-style threads, X replies and launch comments, reviewed by Aakash
-    - eval command reporting junk caught and good wrongly rejected per level
-    - Unit and integration tests, with the OpenRouter connector tested against a mocked server
-    - README, LICENSE-MIT, LICENSE-APACHE, NOTICE, CONTRIBUTING (DCO), SECURITY, CODE_OF_CONDUCT, CHANGELOG
-    - CI on GitHub Actions - tests, clippy, fmt, cargo-deny
-    - Public repository github.com/zeroonething/replysieve, GitHub release v0.1.0, crates.io publish
+  - Rust crate that is both the library (public check API, documented on docs.rs) and the replysieve binary
+  - CLI check command for one comment or a JSONL batch, printing verdict JSON (verdict, reason, confidence, level, model, latency_ms, matched rule when one fired)
+  - Optional context inputs - post or product title and description, parent comment
+  - Strictness levels light, medium, heavy (default medium) as defined in product.yaml
+  - Built-in presets comments, product-review, launch-thread
+  - Custom plain-English rules from a TOML config file, enforced at every level
+  - Free pre-checks with no model call - minimum length per level, stock-phrase list, duplicates against recent texts passed by the caller
+  - Injection guard - comment text sent strictly as data, plus a check that rejects text trying to instruct the moderator
+  - OpenRouter connector for decision models only, API key from an environment variable, ordered model list tried in order by replysieve, default model ~typesafe/jev-latest
+  - When no model answers, the verdict is needs_review with reason model_unavailable (never a silent approve)
+  - MCP server over stdio exposing check_comment and check_batch tools
+  - About 300 labeled example comments across reviews, Reddit-style threads, X replies and launch comments, reviewed by Aakash
+  - eval command reporting junk caught and good wrongly rejected per level
+  - Unit and integration tests, with the OpenRouter connector tested against a mocked server
+  - README, LICENSE-MIT, LICENSE-APACHE, NOTICE, CONTRIBUTING (DCO), SECURITY, CODE_OF_CONDUCT, CHANGELOG
+  - CI on GitHub Actions - tests, clippy, fmt, cargo-deny
+  - Public repository github.com/zeroonething/replysieve, GitHub release v0.1.0, crates.io publish
   excluded:
-    - HTTP server and Docker image (0.2.0)
-    - Rule-testing workflow and platform recipes (0.3.0)
-    - Homebrew, MCP registry listing, prebuilt binaries (0.4.0)
-    - Providers other than OpenRouter, chat LLMs, non-English languages
-    - Storing or logging comment content
-    - Images or video, platform connectors, its own agent loop, hosted service, dashboard
+  - HTTP server and Docker image (0.2.0)
+  - Rule-testing workflow and platform recipes (0.3.0)
+  - Homebrew, MCP registry listing, prebuilt binaries (0.4.0)
+  - Providers other than OpenRouter, chat LLMs, non-English languages
+  - Storing or logging comment content
+  - Images or video, platform connectors, its own agent loop, hosted service, dashboard
   fallback_scope:
-    - CLI check command for one comment or a JSONL batch with verdict JSON
-    - Strictness levels light, medium, heavy
-    - Built-in comments preset only
-    - Free pre-checks and the injection guard
-    - OpenRouter connector with model fallback
-    - Labeled set and eval command
-    - Repository, license files, CI, GitHub release and crates.io publish
+  - CLI check command for one comment or a JSONL batch with verdict JSON
+  - Strictness levels light, medium, heavy
+  - Built-in comments preset only
+  - Free pre-checks and the injection guard
+  - OpenRouter connector with model fallback
+  - Labeled set and eval command
+  - Repository, license files, CI, GitHub release and crates.io publish
 acceptance:
   functional:
-    - "`replysieve check \"<text>\"` prints one verdict JSON object with verdict, reason, confidence, level, model and latency_ms, and exits 0"
-    - "`replysieve check --file comments.jsonl` prints one verdict JSON line per input line, in input order"
-    - "On the level fixtures, a generic comment is approved at light and rejected at medium and heavy, and an off-topic comment is approved at medium and rejected at heavy"
-    - "`--preset comments|product-review|launch-thread` each load, and an unknown preset fails with a clear error and non-zero exit"
-    - "A comment breaking a custom rule from the config file is rejected at light, medium and heavy, with the rule shown in the verdict"
-    - "Title, description and parent-comment context inputs are passed to the model and change the heavy-level on-topic decision on the fixtures"
-    - "Too-short, stock-phrase and duplicate comments (duplicates via --recent) are rejected with no network call, verified by a test run with no API key and no network"
-    - "Comments that try to instruct the moderator are rejected with reason injection_attempt on all injection fixtures"
-    - "With the first configured model failing on the mocked server, the next model in the list answers; with all failing, the verdict is needs_review with reason model_unavailable"
-    - "A missing OPENROUTER_API_KEY gives a clear error message and non-zero exit, before any network call"
-    - "`replysieve mcp` serves check_comment and check_batch over stdio, and both return the same verdict JSON as the CLI"
-    - "`replysieve eval` prints junk caught and good wrongly rejected for each level over the labeled set"
-    - "The library check function is public and documented, with a runnable doc example"
+  - '`replysieve check "<text>"` prints one verdict JSON object with verdict, reason, confidence, level, model and latency_ms, and exits 0'
+  - '`replysieve check --file comments.jsonl` prints one verdict JSON line per input line, in input order'
+  - On the level fixtures, a generic comment is approved at light and rejected at medium and heavy, and an off-topic comment is approved at medium and rejected at heavy
+  - '`--preset comments|product-review|launch-thread` each load, and an unknown preset fails with a clear error and non-zero exit'
+  - A comment breaking a custom rule from the config file is rejected at light, medium and heavy, with the rule shown in the verdict
+  - Title, description and parent-comment context inputs are passed to the model and change the heavy-level on-topic decision on the fixtures
+  - Too-short, stock-phrase and duplicate comments (duplicates via --recent) are rejected with no network call, verified by a test run with no API key and no network
+  - Comments that try to instruct the moderator are rejected with reason injection_attempt on all injection fixtures
+  - With the first configured model failing on the mocked server, the next model in the list answers; with all failing, the verdict is needs_review with reason model_unavailable
+  - A missing OPENROUTER_API_KEY gives a clear error message and non-zero exit, before any network call
+  - '`replysieve mcp` serves check_comment and check_batch over stdio, and both return the same verdict JSON as the CLI'
+  - '`replysieve eval` prints junk caught and good wrongly rejected for each level over the labeled set'
+  - The library check function is public and documented, with a runnable doc example
   non_functional:
-    - "At medium on the labeled set with the default model: junk caught 95% or more, good wrongly rejected under 5%"
-    - "Pre-checks answer in under 5 ms at p99 in a benchmark on the development machine"
-    - "No comment text is written to disk or to logs at any verbosity, verified by a test"
-    - "`cargo install replysieve` builds and runs on macOS and Linux"
-    - "`#![forbid(unsafe_code)]`, clippy with -D warnings and cargo fmt --check all pass"
+  - 'At medium on the labeled set with the default model: junk caught 95% or more, good wrongly rejected under 5%'
+  - Pre-checks answer in under 5 ms at p99 in a benchmark on the development machine
+  - No comment text is written to disk or to logs at any verbosity, verified by a test
+  - '`cargo install replysieve` builds and runs on macOS and Linux'
+  - '`#![forbid(unsafe_code)]`, clippy with -D warnings and cargo fmt --check all pass'
   operational:
-    - "README first screen covers what it is, install, a short example, and MCP setup for Claude Code and Codex"
-    - "NOTICE reads Copyright (c) 2026 Aakash Pawar (zeroonething); Cargo.toml license is MIT OR Apache-2.0"
-    - "CI runs tests, clippy, fmt and cargo-deny on every push and PR, with actions pinned to commit SHAs and read-only default permissions"
-    - "Before the repository goes public: full-history secret scan, secret scanning with push protection, Actions approval required for first-time contributors, actions pinned to SHAs, read-only workflow permissions, no secrets on fork PRs, branch protection with force-push blocked on main and develop, publish token in an approval-gated release environment, and cargo package --list reviewed"
-    - "`cargo publish --dry-run` passes and the `cargo package --list` contents are reviewed before publishing"
-    - "Tag v0.1.0 matches the Cargo.toml version, and the GitHub release notes come from CHANGELOG"
+  - README first screen covers what it is, install, a short example, and MCP setup for Claude Code and Codex
+  - NOTICE reads Copyright (c) 2026 Aakash Pawar (zeroonething); Cargo.toml license is MIT OR Apache-2.0
+  - CI runs tests, clippy, fmt and cargo-deny on every push and PR, with actions pinned to commit SHAs and read-only default permissions
+  - 'Before the repository goes public: full-history secret scan, secret scanning with push protection, Actions approval required for first-time contributors, actions pinned to SHAs, read-only workflow permissions, no secrets on fork PRs, branch protection with force-push blocked on main and develop, publish token in an approval-gated release environment, and cargo package --list reviewed'
+  - '`cargo publish --dry-run` passes and the `cargo package --list` contents are reviewed before publishing'
+  - Tag v0.1.0 matches the Cargo.toml version, and the GitHub release notes come from CHANGELOG
 delivery:
   target_mode: published
   environment: Public GitHub repository github.com/zeroonething/replysieve (default branch develop) and crates.io
-  deployment_method: >
-    Tag v0.1.0, create the GitHub release with notes from CHANGELOG, then cargo publish from
-    a release environment gated on Aakash's approval.
+  deployment_method: 'Tag v0.1.0, create the GitHub release with notes from CHANGELOG, then cargo publish from a release environment gated on Aakash''s approval.
+
+    '
   migrations: []
   observability:
-    - Every verdict JSON carries model, latency_ms and confidence, so callers can watch speed and model behavior
-    - A --verbose flag prints timing and model-fallback events to stderr, never comment text
-  rollback: >
-    crates.io versions cannot be deleted. A bad release is yanked with cargo yank and replaced
-    by a fixed patch version, and the GitHub release is marked as superseded with a note
-    pointing to the fix.
+  - Every verdict JSON carries model, latency_ms and confidence, so callers can watch speed and model behavior
+  - A --verbose flag prints timing and model-fallback events to stderr, never comment text
+  rollback: 'crates.io versions cannot be deleted. A bad release is yanked with cargo yank and replaced by a fixed patch version, and the GitHub release is marked as superseded with a note pointing to the fix.
+
+    '
 dependencies:
   products: []
   services:
-    - OpenRouter API with a decision model listed (default ~typesafe/jev-latest)
-    - GitHub (zeroonething org, Actions)
-    - crates.io
+  - OpenRouter API with a decision model listed (default ~typesafe/jev-latest)
+  - GitHub (zeroonething org, Actions)
+  - crates.io
   human_approvals:
-    - Aakash reviews and corrects the labeled example set
-    - Aakash approves making the repository public
-    - Aakash approves the crates.io publish, which is permanent
+  - Aakash reviews and corrects the labeled example set
+  - Aakash approves making the repository public
+  - Aakash approves the crates.io publish, which is permanent
 resource_profile:
   complexity: medium
   uncertainty: medium
   likely_cost_drivers:
-    - Drafting and reviewing about 300 labeled examples
-    - Tuning level thresholds until the accuracy target is met
-    - Working out Jev's request and response shape through OpenRouter
-    - OpenRouter calls during eval runs
+  - Drafting and reviewing about 300 labeled examples
+  - Tuning level thresholds until the accuracy target is met
+  - Working out Jev's request and response shape through OpenRouter
+  - OpenRouter calls during eval runs
   preferred_tools:
-    - Rust stable
-    - tokio, reqwest, serde, clap
-    - rmcp (official Rust MCP SDK)
-    - cargo-deny
+  - Rust stable
+  - tokio, reqwest, serde, clap
+  - rmcp (official Rust MCP SDK)
+  - cargo-deny
   constraints:
-    - Decision models only, via OpenRouter only
-    - Stateless; no content stored or logged
-    - English only
+  - Decision models only, via OpenRouter only
+  - Stateless; no content stored or logged
+  - English only
 risks:
-  - Jev through OpenRouter may not return probabilities, which would make confidence thresholds unusable; then the levels lean on the chosen label and a wider needs_review band
-  - The accuracy target may not be reached with the default model on the labeled set
-  - The labeled set is drafted by Claude, so it may share its blind spots; Aakash's review is the guard
-  - New injection phrasings may get past the guard
-  - The replysieve name could be taken on crates.io before the 0.1.0 publish
+- Jev through OpenRouter may not return probabilities, which would make confidence thresholds unusable; then the levels lean on the chosen label and a wider needs_review band
+- The accuracy target may not be reached with the default model on the labeled set
+- The labeled set is drafted by Claude, so it may share its blind spots; Aakash's review is the guard
+- New injection phrasings may get past the guard
+- The replysieve name could be taken on crates.io before the 0.1.0 publish
 open_questions:
-  - "Decided by Claude, open to change: when no model answers, return needs_review with reason model_unavailable rather than an error"
+- 'Decided by Claude, open to change: when no model answers, return needs_review with reason model_unavailable rather than an error'
+released_at: '2026-11-08T02:54:36Z'
+mode: published
+delivered: replysieve 0.1.0 is public at github.com/zeroonething/replysieve and on crates.io. A developer installs it with cargo install replysieve, judges one comment or a JSONL batch from the CLI or from Claude Code and Codex over MCP, at light, medium or heavy strictness with a preset or their own rules, and gets approve, reject or needs_review with a reason and confidence from ~typesafe/jev-latest on OpenRouter.
+evidence:
+  tests:
+  - "cargo test --locked (no API key) \u2014 33 passed, 0 failed: precheck and judge unit tests, offline CLI, mocked-OpenRouter model path, MCP stdio, eval arithmetic, pre-check latency, no comment text logged"
+  - "cargo test --doc \u2014 1 passed (crate-level library example)"
+  - "cargo test --release --test precheck_latency \u2014 p50 80.4 us, p99 634.3 us over 13590 pre-checks on macOS Apple Silicon (target under 5 ms)"
+  - "replysieve eval (live, typesafe/jev-1.14-20261014) \u2014 medium junk caught 100.0% (150/150), good wrongly rejected 0.0% (0/152); light 100.0% (90/90) and 0.0% (0/212); heavy 92.8% (194/209), 0.0% (0/93), 15 needs_review; second medium run identical"
+  - "claude -p with replysieve mcp \u2014 check_comment approved a specific comment and rejected stock praise; check_batch returned both in order"
+  - "codex exec with replysieve mcp \u2014 check_comment rejected off-topic at heavy (off_topic) and moderator instructions at medium (injection_attempt)"
+  builds:
+  - "cargo clippy --all-targets --locked -- -D warnings \u2014 exit 0; cargo fmt --check \u2014 exit 0"
+  - "cargo deny check \u2014 advisories ok, bans ok, licenses ok, sources ok"
+  - "RUSTDOCFLAGS=-D warnings cargo doc --no-deps \u2014 exit 0"
+  - "cargo publish --dry-run --locked \u2014 exit 0; cargo package --list reviewed (src, data/labeled.jsonl, README, CHANGELOG, licenses, NOTICE, Cargo files only)"
+  - "GitHub Actions ci on PR #1 \u2014 fmt, clippy, test (ubuntu, macos), deny, secrets, install (ubuntu, macos), package all pass"
+  reviews:
+  - Labeled set of 302 comments reviewed and approved by Aakash before the eval runs (2026-11-08)
+  - 'PR #1 feat/0.1.0 into develop merged with a merge commit after all checks passed'
+  deployments:
+  - "Tag v0.1.0 on main at c5b4975; release workflow run 42439089281 \u2014 verify, test, release, thank, publish all success"
+  - GitHub release v0.1.0 created with notes from CHANGELOG
+  - cargo publish via crates-io environment, approved through the required-reviewer gate (first attempt failed with empty token, rerun succeeded after the environment secret was added); crates.io lists replysieve 0.1.0 created 2026-11-08T02:54:36Z
+  health_checks:
+  - "cargo install replysieve --version 0.1.0 --locked from crates.io \u2014 exit 0; replysieve --version printed replysieve 0.1.0"
+  - 'Registry build: offline check rejected stock praise (stock_phrase); live check approved a specific comment (useful, typesafe/jev-1.14-20261014, 1306 ms)'
+  - "docs.rs/crate/replysieve/0.1.0 \u2014 HTTP 200"
+  - Repository public with secret scanning, push protection, ruleset protecting main and develop from deletion and force push, first-time contributor approval, read-only workflow token, SHA pinning required
+known_limitations:
+- Accuracy is measured on a 302-comment set drafted with an AI model and reviewed by one person, so it may share blind spots and is not a promise for other communities
+- Accuracy depends on ~typesafe/jev-latest, which moves; thresholds were not re-checked against a pinned model version
+- Heavy strictness sends most on-topic-but-nonspecific comments to needs_review rather than rejecting them (15 of 302 in the eval)
+- English only; model path takes roughly 0.5 to 1.5 s per comment
+- crates.io publish uses a stored environment token; trusted publishing is not set up yet
+- cargo install verified on macOS and Linux only, not Windows
+supersedes: null
+next_recommended_version: 0.2.0
+immutable: true
