@@ -1,58 +1,149 @@
 name: release
 
+# A push to main releases the version in Cargo.toml, if it is not released yet.
+# Nothing is typed by hand: bump the version and the CHANGELOG on develop, merge
+# develop into main, and this workflow tags, creates the GitHub release,
+# publishes to crates.io and pushes the Docker image.
+#
+# Every output is checked before it is made (tag, GitHub release, crates.io
+# version, image tag), so a push without a version bump releases nothing and a
+# rerun (Actions "Re-run failed jobs", or "Run workflow" on main) finishes a
+# release that stopped half way. Once the tag exists, everything is built from
+# the tagged commit, never from a newer main.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
-# Read-only by default. Only `release` (creates the GitHub release) and
-# `thank` (comments on contributors' pull requests and issues) get more.
+# Read-only by default. Each job that writes asks for exactly what it writes.
 permissions:
   contents: read
 
+# One release at a time, and never cancel one half way.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
+  IMAGE: ghcr.io/zeroonething/replysieve
 
 jobs:
-  # The tag is the only thing that says which version this is; nothing else
-  # checks it against the crate, the branch or the changelog.
-  verify:
+  # What this push should release, and which parts already exist.
+  plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      minor: ${{ steps.version.outputs.minor }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      latest: ${{ steps.version.outputs.latest }}
+      ref: ${{ steps.exists.outputs.ref }}
+      release: ${{ steps.exists.outputs.release }}
+      crate: ${{ steps.exists.outputs.crate }}
+      image: ${{ steps.exists.outputs.image }}
+      work: ${{ steps.exists.outputs.work }}
     steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::releases run only from main, not $GITHUB_REF"
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      # Releases are cut from main, which takes only reviewed merges from develop.
-      - name: Tag is on main
+      - name: Version
+        id: version
         run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main"
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Cargo.toml version '$version' is not SemVer"
             exit 1
           fi
-      - name: Tag matches Cargo.toml and CHANGELOG
+          prerelease=false
+          [[ "$version" == *-* ]] && prerelease=true
+          # latest moves only forward: never onto a pre-release, never onto a
+          # patch of an older line released after a newer one.
+          highest=$( { git tag -l 'v[0-9]*' | grep -vF -e - | sed 's/^v//' || true; echo "$version"; } | sort -V | tail -1)
+          latest=false
+          [[ "$prerelease" == false && "$highest" == "$version" ]] && latest=true
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "minor=$(cut -d. -f1,2 <<< "$version")"
+            echo "prerelease=$prerelease"
+            echo "latest=$latest"
+          } | tee -a "$GITHUB_OUTPUT"
+      - name: Which outputs already exist
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          cargo_version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
-          tag_version="${GITHUB_REF_NAME#v}"
-          echo "Cargo.toml: $cargo_version"
-          echo "tag:        $tag_version"
-          if [ "$cargo_version" != "$tag_version" ]; then
-            echo "::error::tag $tag_version does not match Cargo.toml $cargo_version"
-            exit 1
+          if sha=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}"); then
+            # Anyone with write access can create a tag; only one on main counts.
+            if ! git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+              echo "::error::tag $TAG ($sha) is not on main; delete it or bump the version"
+              exit 1
+            fi
+            echo "tag $TAG exists at $sha on main: building from it"
+            ref=$sha
+          else
+            ref=$GITHUB_SHA
           fi
-          heading=$(grep -m1 '^## \[' CHANGELOG.md || true)
-          echo "CHANGELOG:  $heading"
+          release=true
+          gh release view "$TAG" > /dev/null 2>&1 && release=false
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -A 'replysieve-release (https://github.com/zeroonething/replysieve)' \
+            "https://crates.io/api/v1/crates/replysieve/$VERSION")
+          case "$code" in
+            200) crate=false ;;
+            404) crate=true ;;
+            *) echo "::error::crates.io answered HTTP $code; cannot tell whether $VERSION is published"; exit 1 ;;
+          esac
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin > /dev/null
+          image=true
+          docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1 && image=false
+          work=false
+          [[ "$release$crate$image" == *true* ]] && work=true
+          {
+            echo "ref=$ref"
+            echo "release=$release"
+            echo "crate=$crate"
+            echo "image=$image"
+            echo "work=$work"
+          } | tee -a "$GITHUB_OUTPUT"
+          if [[ "$work" == false ]]; then
+            echo "::notice::$TAG is fully released (GitHub release, crates.io, $IMAGE:$VERSION); nothing to do"
+          fi
+      - name: CHANGELOG starts with this version
+        if: steps.exists.outputs.work == 'true'
+        env:
+          REF: ${{ steps.exists.outputs.ref }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          heading=$(git show "$REF:CHANGELOG.md" | grep -m1 '^## \[' || true)
+          echo "CHANGELOG: $heading"
           case "$heading" in
-            "## [$tag_version]"*) ;;
-            *) echo "::error::the first CHANGELOG.md section is not [$tag_version]"; exit 1 ;;
+            "## [$VERSION]"*) ;;
+            *) echo "::error::the first CHANGELOG.md section is not [$VERSION]"; exit 1 ;;
           esac
 
   test:
+    needs: plan
+    if: needs.plan.outputs.work == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.plan.outputs.ref }}
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
@@ -63,8 +154,11 @@ jobs:
       - run: cargo package --locked --list
       - run: cargo publish --dry-run --locked
 
+  # Creates the tag on the planned commit and the release with this version's
+  # CHANGELOG section, then the contributors since the previous release.
   release:
-    needs: [verify, test]
+    needs: [plan, test]
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -72,36 +166,36 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.plan.outputs.ref }}
           fetch-depth: 0
           persist-credentials: false
-
-      # The body is this version's CHANGELOG section (verify checked it is the
-      # first one), then the contributors since the previous release tag.
       - name: Notes
         env:
           GH_TOKEN: ${{ github.token }}
+          REF: ${{ needs.plan.outputs.ref }}
         run: |
           awk '/^## \[/{n++; next} n==1 && !/^\[[^]]*\]:/' CHANGELOG.md > notes.md
-          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "$REF^" 2>/dev/null || true)
           if [ -n "$previous" ]; then
             echo "contributors since $previous"
-            { echo; bash .github/contributors.sh section "$previous" "$GITHUB_REF_NAME"; } >> notes.md
+            { echo; bash .github/contributors.sh section "$previous" "$REF"; } >> notes.md
           fi
           cat notes.md
-
       - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
-          name: ${{ github.ref_name }}
+          tag_name: ${{ needs.plan.outputs.tag }}
+          target_commitish: ${{ needs.plan.outputs.ref }}
+          name: ${{ needs.plan.outputs.tag }}
           body_path: notes.md
-          # A tag with a suffix (v0.2.0-rc.1) is a release candidate.
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ needs.plan.outputs.prerelease }}
+          make_latest: ${{ needs.plan.outputs.latest }}
 
   # "Released in vX.Y.Z" on each outside contributor's pull request and the
-  # issues it closed. Its own job, so the one token that can comment holds
-  # nothing else. Not for a release candidate.
+  # issues it closed, once per item. Its own job, so the one token that can
+  # comment holds nothing else. Not for a pre-release.
   thank:
-    needs: release
-    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [plan, release]
+    if: needs.plan.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -116,20 +210,102 @@ jobs:
       - name: Thank contributors
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/contributors.sh thank "$GITHUB_REF_NAME"
+        run: bash .github/contributors.sh thank "${{ needs.plan.outputs.tag }}"
 
-  # The token lives only in the `crates-io` environment, which should require
-  # a reviewer and allow only v* tags to deploy.
+  # Trusted publishing: a short-lived token from crates.io for this workflow
+  # and environment, no stored secret. Until trusted publishing is set up for
+  # the crate, the stored CARGO_REGISTRY_TOKEN in the environment is used.
+  # The environment deploys only from main.
   publish:
-    needs: release
+    needs: [plan, test]
+    if: needs.plan.outputs.crate == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.plan.outputs.ref }}
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-      - run: cargo publish --locked
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        continue-on-error: true
+      - name: cargo publish
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+          VIA: ${{ steps.auth.outputs.token && 'trusted publishing' || 'stored token' }}
+        run: |
+          echo "publishing with $VIA"
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::no crates.io token: set up trusted publishing for this workflow, or add CARGO_REGISTRY_TOKEN to the crates-io environment"
+            exit 1
+          fi
+          cargo publish --locked
+
+  # One image per architecture on its own native runner, pushed as
+  # <version>-<arch>, then joined into one multi-arch tag below.
+  image:
+    needs: [plan, test]
+    if: needs.plan.outputs.image == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          persist-credentials: false
+      - name: Build, check and push
+        env:
+          TAG: ${{ env.IMAGE }}:${{ needs.plan.outputs.version }}-${{ matrix.arch }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          REF: ${{ needs.plan.outputs.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          docker build --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$REF" -t "$TAG" .
+          printed=$(docker run --rm "$TAG" --version)
+          echo "$printed"
+          test "$printed" = "replysieve $VERSION"
+          test "$(docker image inspect -f '{{.Architecture}}' "$TAG")" = "${{ matrix.arch }}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$TAG"
+
+  manifest:
+    needs: [plan, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Join the architectures under the release tags
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          MINOR: ${{ needs.plan.outputs.minor }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+          LATEST: ${{ needs.plan.outputs.latest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          tags=(-t "$IMAGE:$VERSION")
+          [[ "$PRERELEASE" == false ]] && tags+=(-t "$IMAGE:$MINOR")
+          [[ "$LATEST" == true ]] && tags+=(-t "$IMAGE:latest")
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          docker buildx imagetools inspect "$IMAGE:$VERSION" | tee manifest.txt
+          grep -q 'linux/amd64' manifest.txt
+          grep -q 'linux/arm64' manifest.txt
