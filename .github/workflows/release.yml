@@ -225,7 +225,7 @@ jobs:
   # missing. Its own job, so the one token that can comment holds nothing
   # else. Not for a pre-release.
   thank:
-    needs: [plan, test, release, publish, npm, manifest]
+    needs: [plan, test, release, publish, npm-pack, npm, manifest]
     if: >-
       always() && needs.plan.result == 'success'
       && needs.plan.outputs.prerelease == 'false'
@@ -281,25 +281,28 @@ jobs:
           fi
           cargo publish --locked
 
-  # @zeroonething/replysieve, the library as WebAssembly, with provenance.
-  # npm 11.5.1 or newer uses trusted publishing (OIDC) when it is set up for
-  # this workflow on npmjs.com, and otherwise the NPM_TOKEN secret of the npm
-  # environment. The environment deploys only from main. wasm-bindgen-cli must
-  # match the wasm-bindgen crate exactly, so its version comes from Cargo.lock.
-  npm:
-    needs: [plan, test]
-    if: needs.plan.outputs.npm == 'true'
+  # @zeroonething/replysieve, the library as WebAssembly. Built, tested and
+  # packed here with no publish credential in reach (npm ci and cargo run
+  # third-party build code), after the tag and GitHub release exist.
+  # wasm-bindgen-cli must match the wasm-bindgen crate exactly, so its version
+  # comes from Cargo.lock.
+  npm-pack:
+    needs: [plan, test, release]
+    if: >-
+      always() && needs.plan.outputs.npm == 'true'
+      && needs.test.result == 'success'
+      && (needs.release.result == 'success' || needs.release.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: npm
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.plan.outputs.ref }}
           persist-credentials: false
+      - name: package.json version is the release version
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: test "$(jq -r .version npm/package.json)" = "$VERSION"
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           targets: wasm32-unknown-unknown
@@ -312,8 +315,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11.21.1
       - run: cargo build --locked
       - run: npm ci
         working-directory: npm
@@ -321,10 +322,60 @@ jobs:
         working-directory: npm
       - run: npm test
         working-directory: npm
-      - run: npm publish --provenance --access public
+      - run: npm pack
         working-directory: npm
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package
+          path: npm/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  # Publishes the packed tarball with provenance. npm 11.5.1 or newer uses
+  # trusted publishing (OIDC) when it is set up for this workflow on
+  # npmjs.com, and otherwise the NPM_TOKEN secret of the npm environment,
+  # which deploys only from main. A pre-release goes to the "next" dist-tag,
+  # and a release older than the newest one never takes "latest".
+  npm:
+    needs: [plan, npm-pack]
+    if: always() && needs.npm-pack.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g --ignore-scripts npm@11.21.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package
+          path: dist
+      - name: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        run: |
+          highest=$( { git tag -l 'v[0-9]*' | grep -vF -e - | sed 's/^v//' || true; echo "$VERSION"; } | sort -V | tail -1)
+          if [[ "$PRERELEASE" == true ]]; then
+            tag=next
+          elif [[ "$highest" == "$VERSION" ]]; then
+            tag=latest
+          else
+            tag="release-${VERSION%.*}"
+          fi
+          echo "publishing $VERSION with dist-tag $tag"
+          npm publish "dist/zeroonething-replysieve-$VERSION.tgz" --provenance --access public --tag "$tag"
 
   # One image per architecture on its own native runner, pushed as
   # <version>-<arch>, then joined into one multi-arch tag below.

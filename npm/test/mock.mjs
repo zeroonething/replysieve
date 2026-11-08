@@ -48,6 +48,12 @@ function decide(body) {
   return { model: model.startsWith("~") ? "test/jev-1" : model, answers };
 }
 
+/** Wait up to 2 s for `check()` to hold. */
+export async function eventually(check) {
+  for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+  return check();
+}
+
 /** Start the mock. `requests` counts calls, `aborted` counts calls the client dropped. */
 export async function start() {
   const stats = { requests: 0, aborted: 0 };

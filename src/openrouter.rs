@@ -39,11 +39,21 @@ fn decisions_url(base_url: &str) -> String {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Client {
     http: reqwest::Client,
     url: String,
     key: String,
+}
+
+/// Never prints the API key.
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("url", &self.url)
+            .field("key", &"<redacted>")
+            .finish_non_exhaustive()
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -97,7 +107,7 @@ impl Client {
 /// (Cloudflare Workers, Node 20 and later). A model that has not answered
 /// within the timeout is aborted with `AbortSignal.timeout`.
 #[cfg(target_arch = "wasm32")]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Client {
     url: String,
     key: String,
@@ -207,5 +217,16 @@ mod fetch {
             .as_string()
             .ok_or(false)?;
         Ok((status, text))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn debug_never_prints_the_key() {
+        let checker = crate::Checker::new(crate::Options::default(), Some("sk-or-secret".into()));
+        let shown = format!("{checker:?}");
+        assert!(!shown.contains("sk-or-secret"), "{shown}");
+        assert!(shown.contains("<redacted>"), "{shown}");
     }
 }

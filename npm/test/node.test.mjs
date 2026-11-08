@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { Checker } from "@zeroonething/replysieve";
-import { BROKEN, SLOW, start } from "./mock.mjs";
+import { BROKEN, SLOW, eventually, start } from "./mock.mjs";
 
 const TITLE = "Taskly: a todo app with offline sync";
 const SPECIFIC = "Does offline sync merge edits when I change one task on two phones?";
@@ -66,8 +66,7 @@ test("a model over the timeout is aborted and the next one is tried", async () =
   assert.equal(v.model, "test/backup");
   assert.equal(v.verdict, "approve");
   assert.ok(Date.now() - started < 3000, "waited for the slow model");
-  await new Promise((r) => setTimeout(r, 100));
-  assert.equal(mock.stats.aborted, aborted + 1);
+  assert.ok(await eventually(() => mock.stats.aborted === aborted + 1), "slow request not aborted");
 });
 
 test("when every model fails or times out the verdict is needs_review, never approve", async () => {
@@ -120,7 +119,7 @@ test("bad options throw a ReplysieveError with a clear message", () => {
 });
 
 test("a comment that needs the model rejects without a key; bad input rejects", async () => {
-  await rejects(new Checker().check({ text: SPECIFIC, title: TITLE }), /OPENROUTER_API_KEY/);
+  await rejects(new Checker().check({ text: SPECIFIC, title: TITLE }), /pass apiKey to new Checker/);
   await rejects(checker().check({ title: TITLE }), /invalid comment/);
   await rejects(checker().checkBatch("not an array"), /array/);
   throws(() => checker().precheck(42), /invalid comment/);

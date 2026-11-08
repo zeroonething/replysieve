@@ -24,8 +24,7 @@
       "types": "./index.d.ts",
       "workerd": "./worker.js",
       "worker": "./worker.js",
-      "node": "./node.js",
-      "default": "./node.js"
+      "node": "./node.js"
     }
   },
   "types": "./index.d.ts",

@@ -60,7 +60,7 @@ export interface CheckerOptions {
   rules?: string[];
   /** Extra stock phrases for the free pre-check. */
   stock_phrases?: string[];
-  /** A replysieve TOML config. The fields above override it. */
+  /** A replysieve TOML config. A field given above replaces the config's value; an empty `models` keeps the config's models. */
   config?: string;
   /** Milliseconds one model gets before the next is tried. Default 10000. */
   timeout_ms?: number;
@@ -92,6 +92,16 @@ fn error(message: impl std::fmt::Display) -> JsValue {
     let e = js_sys::Error::new(&message.to_string());
     e.set_name("ReplysieveError");
     e.into()
+}
+
+/// [`crate::Error`] in the package's terms: the key is an argument here,
+/// not an environment variable.
+fn js_error(e: crate::Error) -> JsValue {
+    match e {
+        crate::Error::MissingApiKey => error(
+            "no OpenRouter API key: pass apiKey to new Checker(options, apiKey); get one at https://openrouter.ai/keys",
+        ),
+    }
 }
 
 fn to_js(value: &impl Serialize) -> Result<JsValue, JsValue> {
@@ -250,7 +260,7 @@ impl Checker {
             let v: Verdict = checker
                 .check(&c, &recent.unwrap_or_default())
                 .await
-                .map_err(error)?;
+                .map_err(js_error)?;
             to_js(&v)
         })
     }
@@ -268,7 +278,7 @@ impl Checker {
             let vs = checker
                 .check_batch(&cs, &recent.unwrap_or_default())
                 .await
-                .map_err(error)?;
+                .map_err(js_error)?;
             to_js(&vs)
         })
     }
