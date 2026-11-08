@@ -3,12 +3,12 @@ name: release
 # A push to main releases the version in Cargo.toml, if it is not released yet.
 # Nothing is typed by hand: bump the version and the CHANGELOG on develop, merge
 # develop into main, and this workflow tags, creates the GitHub release,
-# publishes to crates.io and pushes the Docker image.
+# publishes to crates.io and npm, and pushes the Docker image.
 #
 # Every output is checked before it is made (tag, GitHub release, crates.io
-# version, image tag), so a push without a version bump releases nothing and a
-# rerun (Actions "Re-run failed jobs", or "Run workflow" on main) finishes a
-# release that stopped half way. Once the tag exists, everything is built from
+# version, npm version, image tag), so a push without a version bump releases
+# nothing and a rerun (Actions "Re-run failed jobs", or "Run workflow" on main)
+# finishes a release that stopped half way. Once the tag exists, everything is built from
 # the tagged commit, never from a newer main.
 on:
   push:
@@ -44,6 +44,7 @@ jobs:
       ref: ${{ steps.exists.outputs.ref }}
       release: ${{ steps.exists.outputs.release }}
       crate: ${{ steps.exists.outputs.crate }}
+      npm: ${{ steps.exists.outputs.npm }}
       image: ${{ steps.exists.outputs.image }}
       retag: ${{ steps.exists.outputs.retag }}
       work: ${{ steps.exists.outputs.work }}
@@ -63,6 +64,11 @@ jobs:
           version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Cargo.toml version '$version' is not SemVer"
+            exit 1
+          fi
+          npm_version=$(jq -r .version npm/package.json)
+          if [[ "$npm_version" != "$version" ]]; then
+            echo "::error::npm/package.json version '$npm_version' is not the Cargo.toml version '$version'"
             exit 1
           fi
           prerelease=false
@@ -103,6 +109,14 @@ jobs:
             404) crate=true ;;
             *) echo "::error::crates.io answered HTTP $code; cannot tell whether $VERSION is published"; exit 1 ;;
           esac
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -A 'replysieve-release (https://github.com/zeroonething/replysieve)' \
+            "https://registry.npmjs.org/@zeroonething%2freplysieve/$VERSION")
+          case "$code" in
+            200) npm=false ;;
+            404) npm=true ;;
+            *) echo "::error::the npm registry answered HTTP $code; cannot tell whether $VERSION is published"; exit 1 ;;
+          esac
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin > /dev/null
           image=true
           docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1 && image=false
@@ -115,17 +129,18 @@ jobs:
             [[ "$want" == "$have" ]] || retag=true
           fi
           work=false
-          [[ "$release$crate$image$retag" == *true* ]] && work=true
+          [[ "$release$crate$npm$image$retag" == *true* ]] && work=true
           {
             echo "ref=$ref"
             echo "release=$release"
             echo "crate=$crate"
+            echo "npm=$npm"
             echo "image=$image"
             echo "retag=$retag"
             echo "work=$work"
           } | tee -a "$GITHUB_OUTPUT"
           if [[ "$work" == false ]]; then
-            echo "::notice::$TAG is fully released (GitHub release, crates.io, $IMAGE:$VERSION); nothing to do"
+            echo "::notice::$TAG is fully released (GitHub release, crates.io, npm, $IMAGE:$VERSION); nothing to do"
           fi
       - name: CHANGELOG starts with this version
         if: steps.exists.outputs.work == 'true'
@@ -210,7 +225,7 @@ jobs:
   # missing. Its own job, so the one token that can comment holds nothing
   # else. Not for a pre-release.
   thank:
-    needs: [plan, test, release, publish, manifest]
+    needs: [plan, test, release, publish, npm, manifest]
     if: >-
       always() && needs.plan.result == 'success'
       && needs.plan.outputs.prerelease == 'false'
@@ -265,6 +280,51 @@ jobs:
             exit 1
           fi
           cargo publish --locked
+
+  # @zeroonething/replysieve, the library as WebAssembly, with provenance.
+  # npm 11.5.1 or newer uses trusted publishing (OIDC) when it is set up for
+  # this workflow on npmjs.com, and otherwise the NPM_TOKEN secret of the npm
+  # environment. The environment deploys only from main. wasm-bindgen-cli must
+  # match the wasm-bindgen crate exactly, so its version comes from Cargo.lock.
+  npm:
+    needs: [plan, test]
+    if: needs.plan.outputs.npm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-bindgen-cli at the Cargo.lock version
+        run: |
+          version=$(grep -A1 -x 'name = "wasm-bindgen"' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          echo "wasm-bindgen $version"
+          test -n "$version"
+          cargo install wasm-bindgen-cli --locked --version "$version"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11.21.1
+      - run: cargo build --locked
+      - run: npm ci
+        working-directory: npm
+      - run: npm run build
+        working-directory: npm
+      - run: npm test
+        working-directory: npm
+      - run: npm publish --provenance --access public
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # One image per architecture on its own native runner, pushed as
   # <version>-<arch>, then joined into one multi-arch tag below.
