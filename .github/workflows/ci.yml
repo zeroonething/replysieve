@@ -168,13 +168,14 @@ jobs:
       - name: Health, auth and an offline check
         run: |
           curl -fsS http://127.0.0.1:8080/healthz | jq -e '.status == "ok"'
-          for auth in "" "Authorization: Bearer wrong"; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "$auth" \
+          status() {
+            curl -s -o /dev/null -w '%{http_code}' "$@" \
               -H 'Content-Type: application/json' -d '{"text":"hi"}' \
-              http://127.0.0.1:8080/v1/check)
-            test "$code" = 401
-          done
-          curl -fsS -H 'Authorization: Bearer ci-token' \
+              http://127.0.0.1:8080/v1/check
+          }
+          test "$(status)" = 401
+          test "$(status --oauth2-bearer wrong)" = 401
+          curl -fsS --oauth2-bearer ci-token \
             -H 'Content-Type: application/json' -d '{"text":"hi"}' \
             http://127.0.0.1:8080/v1/check \
             | jq -e '.verdict == "reject" and .reason == "too_short"'
