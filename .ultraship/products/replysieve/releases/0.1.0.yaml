@@ -26,7 +26,7 @@ scope:
     - Custom plain-English rules from a TOML config file, enforced at every level
     - Free pre-checks with no model call - minimum length per level, stock-phrase list, duplicates against recent texts passed by the caller
     - Injection guard - comment text sent strictly as data, plus a check that rejects text trying to instruct the moderator
-    - OpenRouter connector for decision models only, API key from an environment variable, ordered model list passed to OpenRouter for fallback, default model ~typesafe/jev-latest
+    - OpenRouter connector for decision models only, API key from an environment variable, ordered model list tried in order by replysieve, default model ~typesafe/jev-latest
     - When no model answers, the verdict is needs_review with reason model_unavailable (never a silent approve)
     - MCP server over stdio exposing check_comment and check_batch tools
     - About 300 labeled example comments across reviews, Reddit-style threads, X replies and launch comments, reviewed by Aakash
@@ -123,9 +123,7 @@ risks:
   - Jev through OpenRouter may not return probabilities, which would make confidence thresholds unusable; then the levels lean on the chosen label and a wider needs_review band
   - The accuracy target may not be reached with the default model on the labeled set
   - The labeled set is drafted by Claude, so it may share its blind spots; Aakash's review is the guard
-  - OpenRouter's model-list fallback may not behave as expected for decision models
   - New injection phrasings may get past the guard
   - The replysieve name could be taken on crates.io before the 0.1.0 publish
 open_questions:
-  - The exact request and response shape for Jev through OpenRouter, settled while building the connector
   - "Decided by Claude, open to change: when no model answers, return needs_review with reason model_unavailable rather than an error"
