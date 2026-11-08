@@ -4,6 +4,22 @@ All notable changes to replysieve are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-08
+
+replysieve now runs inside your own JavaScript app as an npm package, with no server to run.
+
+### Added
+
+- npm package `@zeroonething/replysieve`: the Rust core compiled to WebAssembly, for Cloudflare Workers (bundled by wrangler) and Node 20 and later. `new Checker(options, apiKey)` with `check`, `checkBatch` and a synchronous `precheck` return the same verdict JSON as the CLI. TypeScript types are included.
+- Options take `level`, `preset`, `models`, `rules`, `stock_phrases`, a TOML `config` string, `timeout_ms` per model, `base_url` and `log`. Bad options, an unknown level or preset, and invalid TOML throw an `Error` named `ReplysieveError`.
+- On WebAssembly, OpenRouter is called through the runtime's own `fetch`; a model that does not answer within the timeout is aborted and the next model is tried. When no model answers the verdict is needs_review with reason model_unavailable.
+- The release workflow publishes the npm package with provenance alongside the crate, GitHub release and Docker image.
+
+### Changed
+
+- The command-line tool, HTTP server and MCP server are behind the default `cli` Cargo feature. `cargo install replysieve` and the binary are unchanged; Rust library users can build with `default-features = false` to drop clap, tokio, axum and rmcp, and the library builds for `wasm32-unknown-unknown`.
+- `Config::load` (reading a config file) is not available on WebAssembly; use `Config::from_toml` there.
+
 ## [0.2.0] - 2026-11-08
 
 replysieve now runs as an HTTP server and ships as a Docker image.
@@ -16,6 +32,7 @@ replysieve now runs as an HTTP server and ships as a Docker image.
 - Graceful shutdown on Ctrl-C and SIGTERM. With `-v` the server logs method, path, status and latency per request, never comment text.
 - Docker image `ghcr.io/zeroonething/replysieve` (tags `0.2.0`, `0.2`, `latest`) for linux/amd64 and linux/arm64. It is distroless, about 44 MB, runs as a non-root user and listens on 0.0.0.0:8080.
 - `Checker::check_batch` in the Rust library judges many comments and returns verdicts in input order.
+
 ## [0.1.0] - 2026-11-08
 
 First release.
@@ -32,5 +49,6 @@ First release.
 - `replysieve eval` reports junk caught and good comments wrongly rejected per level over a labeled set of 302 example comments that ships with the crate.
 - Rust library API (`Checker`, `Comment`, `Verdict`) documented on docs.rs.
 
+[0.3.0]: https://github.com/zeroonething/replysieve/releases/tag/v0.3.0
 [0.2.0]: https://github.com/zeroonething/replysieve/releases/tag/v0.2.0
 [0.1.0]: https://github.com/zeroonething/replysieve/releases/tag/v0.1.0

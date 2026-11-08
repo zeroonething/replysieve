@@ -6,7 +6,8 @@ reason. It runs free checks first and then asks a small decision model on
 OpenRouter, so it is much cheaper and faster than asking a chat LLM.
 
 It works as a CLI, an HTTP server (also as a Docker image), an MCP server for
-coding agents, and a Rust library.
+coding agents, an npm package for Cloudflare Workers and Node, and a Rust
+library.
 
 ```sh
 cargo install replysieve
@@ -30,6 +31,66 @@ codex mcp add replysieve --env OPENROUTER_API_KEY=sk-or-... -- replysieve mcp
 Then ask your agent something like "check these comments with replysieve at heavy
 strictness". It gets two tools, `check_comment` and `check_batch`.
 
+## Use it from JavaScript
+
+The npm package is the same checker compiled to WebAssembly. It runs inside your
+Cloudflare Worker or Node 20+ app, so there is no replysieve server to run, and
+it returns the same verdict JSON as the CLI.
+
+```sh
+npm install @zeroonething/replysieve
+```
+
+In a Cloudflare Worker, keep the OpenRouter key in a secret
+(`npx wrangler secret put OPENROUTER_API_KEY`, and in `.dev.vars` for
+`wrangler dev`). wrangler bundles the WebAssembly for you:
+
+```js
+import { Checker } from "@zeroonething/replysieve";
+
+export default {
+  async fetch(request, env) {
+    const { text, title } = await request.json();
+    const checker = new Checker({ level: "medium" }, env.OPENROUTER_API_KEY);
+    const verdict = await checker.check({ text, title });
+    // { verdict: "approve", reason: "useful", confidence: 0.97, level: "medium",
+    //   model: "typesafe/jev-1.14-20261014", latency_ms: 640 }
+    return Response.json(verdict);
+  },
+};
+```
+
+In Node:
+
+```js
+import { Checker } from "@zeroonething/replysieve";
+
+const checker = new Checker(
+  { level: "heavy", preset: "product-review", rules: ["No links to other products"] },
+  process.env.OPENROUTER_API_KEY,
+);
+
+const verdict = await checker.check(
+  { text: "Does offline sync merge edits made on two phones?", title: "Taskly" },
+  ["texts this author posted recently"], // optional: an identical comment is a duplicate
+);
+const verdicts = await checker.checkBatch(["first comment", { text: "second", title: "Taskly" }]);
+const free = checker.precheck("Great product, love it!!"); // synchronous, no network; null if the model is needed
+```
+
+`new Checker(options, apiKey)` takes `level`, `preset`, `models`, `rules`,
+`stock_phrases`, `config` (the text of a replysieve TOML config; the other fields
+override it), `timeout_ms` per model (default 10000), `base_url` and `log`
+(model fallbacks and timings to `console.log`, never comment text). A comment is
+a string or `{ text, title?, description?, parent? }`. Bad options throw an
+`Error` named `ReplysieveError`; when no model answers, the verdict is
+`needs_review` with reason `model_unavailable`, never an approve. TypeScript
+types are included.
+
+Do not use it from browser JavaScript: the OpenRouter key would be visible to
+every visitor. Call it from your server or Worker. Deno and Bun may work but are
+not tested.
+
 ## Run it as an HTTP server
 
 `replysieve serve` puts the same checks behind HTTP, so your backend can call
@@ -40,18 +101,18 @@ export OPENROUTER_API_KEY=sk-or-...
 export REPLYSIEVE_TOKEN=$(openssl rand -hex 32)   # callers send this as a bearer token
 
 docker run -d -p 8080:8080 -e OPENROUTER_API_KEY -e REPLYSIEVE_TOKEN \
-  ghcr.io/zeroonething/replysieve:0.2.0
+  ghcr.io/zeroonething/replysieve:0.3.0
 ```
 
 The image is about 44 MB, runs on linux/amd64 and linux/arm64 as a non-root
-user, and listens on port 8080. It is tagged `0.2.0`, `0.2` and `latest`. To
+user, and listens on port 8080. It is tagged `0.3.0`, `0.3` and `latest`. To
 change flags, put the whole command after the image name. A config file can be
 mounted:
 
 ```sh
 docker run -d -p 8080:8080 -e OPENROUTER_API_KEY -e REPLYSIEVE_TOKEN \
   -v "$PWD/replysieve.toml:/replysieve.toml:ro" \
-  ghcr.io/zeroonething/replysieve:0.2.0 \
+  ghcr.io/zeroonething/replysieve:0.3.0 \
   serve --bind 0.0.0.0:8080 --level heavy --config /replysieve.toml
 ```
 
@@ -146,7 +207,7 @@ Publish `approve`, drop `reject`, and hold `needs_review` for a person.
 | --- | --- | --- |
 | `POST /v1/check` | yes, when set | one verdict |
 | `POST /v1/check/batch` | yes, when set | `{"verdicts": [...]}` in input order |
-| `GET /healthz` | no | `{"status":"ok","version":"0.2.0"}` |
+| `GET /healthz` | no | `{"status":"ok","version":"0.3.0"}` |
 
 Requests must send `Content-Type: application/json`. Every error has a JSON
 body, `{"error": "..."}`.
@@ -286,9 +347,10 @@ that the pipeline works, not as a promise for your own comments. Run
 replysieve is stateless. It never writes comment text to disk or logs, at any
 verbosity. `-v` prints only timing and model fallback events, and for `serve` one
 line per request with the method, path, status and latency. Comment text goes
-only to OpenRouter, using your own key.
+only to OpenRouter, using your own key. The npm package logs nothing unless you
+pass `log: true`, and then only model fallbacks and timings.
 
-## Not in 0.2.0
+## Not in 0.3.0
 
 English only. No images or video. No hosted service: you run replysieve yourself.
 replysieve gives verdicts and leaves deleting, hiding or banning to you. Recipes
