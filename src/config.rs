@@ -1,9 +1,7 @@
 //! The TOML config file.
 
 use crate::types::Level;
-use anyhow::Context;
 use serde::Deserialize;
-use std::path::Path;
 
 /// Contents of a replysieve config file. Every field is optional.
 ///
@@ -38,8 +36,11 @@ impl Config {
         Ok(toml::from_str(text)?)
     }
 
-    /// Read and parse a config file.
-    pub fn load(path: &Path) -> anyhow::Result<Self> {
+    /// Read and parse a config file. Not available on WebAssembly; pass the
+    /// file's text to [`Config::from_toml`] there.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
+        use anyhow::Context;
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("cannot read config file {}", path.display()))?;
         Self::from_toml(&text).with_context(|| format!("invalid config file {}", path.display()))
