@@ -140,8 +140,15 @@ pub struct Verdict {
     /// The model that answered, or null when no model was called.
     pub model: Option<String>,
     /// Time spent judging, in milliseconds.
+    #[schemars(schema_with = "non_negative_integer")]
     pub latency_ms: u64,
     /// The custom rule that fired, when one did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rule: Option<String>,
+}
+
+/// A plain non-negative integer schema. The default for u64 carries
+/// `format: uint64`, which some MCP clients warn about.
+fn non_negative_integer(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({ "type": "integer", "minimum": 0 })
 }
