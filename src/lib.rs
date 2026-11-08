@@ -55,6 +55,9 @@ use std::time::Instant;
 /// The default OpenRouter decision model.
 pub const DEFAULT_MODEL: &str = "~typesafe/jev-latest";
 
+/// Comments judged at once by [`Checker::check_batch`].
+const BATCH_CONCURRENCY: usize = 8;
+
 /// Environment variable holding the OpenRouter API key.
 pub const API_KEY_ENV: &str = "OPENROUTER_API_KEY";
 
@@ -182,6 +185,24 @@ impl Checker {
             latency_ms: start.elapsed().as_millis() as u64,
             rule: None,
         })
+    }
+
+    /// Judge many comments, a few at a time. Verdicts come back in input order.
+    pub async fn check_batch(
+        &self,
+        comments: &[Comment],
+        recent: &[String],
+    ) -> Result<Vec<Verdict>, Error> {
+        use futures_util::{StreamExt, stream};
+        // Collected first: a stream holding the mapping closure is not provably
+        // Send to rustc, and axum handlers and MCP tools need it to be.
+        let checks: Vec<_> = comments.iter().map(|c| self.check(c, recent)).collect();
+        stream::iter(checks)
+            .buffered(BATCH_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect()
     }
 
     /// Judge one comment: free pre-checks first, then the models in order.

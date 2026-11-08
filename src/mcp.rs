@@ -1,60 +1,69 @@
 //! MCP server over stdio: check_comment and check_batch.
 
-use futures_util::{StreamExt, stream};
 use replysieve::{Checker, Comment, Level, Verdict};
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::{ErrorData, ServiceExt, tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Comments judged at once in check_batch.
-const CONCURRENCY: usize = 8;
-
+/// One comment to judge. Also the body of the HTTP server's POST /v1/check.
 #[derive(Deserialize, JsonSchema)]
-struct CheckComment {
+pub(crate) struct CheckComment {
     /// The comment text.
-    text: String,
+    pub text: String,
     /// Title of the post or product the comment is on.
-    title: Option<String>,
+    pub title: Option<String>,
     /// Description of the post or product.
-    description: Option<String>,
+    pub description: Option<String>,
     /// The comment this one replies to.
-    parent: Option<String>,
+    pub parent: Option<String>,
     /// light, medium or heavy. Defaults to the server's level.
-    level: Option<Level>,
+    pub level: Option<Level>,
     /// Recent texts from the same author or thread; an identical comment is a duplicate.
     #[serde(default)]
-    recent: Vec<String>,
+    pub recent: Vec<String>,
 }
 
+impl CheckComment {
+    pub fn comment(&self) -> Comment {
+        Comment {
+            text: self.text.clone(),
+            title: self.title.clone(),
+            description: self.description.clone(),
+            parent: self.parent.clone(),
+        }
+    }
+}
+
+/// Many comments to judge. Also the body of the HTTP server's POST /v1/check/batch.
 #[derive(Deserialize, JsonSchema)]
-struct CheckBatch {
+pub(crate) struct CheckBatch {
     /// The comments, each with text and optional title, description and parent.
-    comments: Vec<Comment>,
+    pub comments: Vec<Comment>,
     /// light, medium or heavy. Defaults to the server's level.
-    level: Option<Level>,
+    pub level: Option<Level>,
     /// Recent texts from the same author or thread; an identical comment is a duplicate.
     #[serde(default)]
-    recent: Vec<String>,
+    pub recent: Vec<String>,
 }
 
+/// One verdict per comment. Also the HTTP server's POST /v1/check/batch response.
 #[derive(Serialize, JsonSchema)]
-struct Verdicts {
+pub(crate) struct Verdicts {
     /// One verdict per comment, in input order.
-    verdicts: Vec<Verdict>,
+    pub verdicts: Vec<Verdict>,
+}
+
+/// `checker` at `level`, or unchanged when no level was asked for.
+pub(crate) fn at(checker: &Checker, level: Option<Level>) -> Checker {
+    match level {
+        Some(l) => checker.clone().at_level(l),
+        None => checker.clone(),
+    }
 }
 
 struct Server {
     checker: Checker,
-}
-
-impl Server {
-    fn at(&self, level: Option<Level>) -> Checker {
-        match level {
-            Some(l) => self.checker.clone().at_level(l),
-            None => self.checker.clone(),
-        }
-    }
 }
 
 fn failed(e: replysieve::Error) -> ErrorData {
@@ -71,15 +80,8 @@ impl Server {
         &self,
         Parameters(p): Parameters<CheckComment>,
     ) -> Result<Json<Verdict>, ErrorData> {
-        let comment = Comment {
-            text: p.text,
-            title: p.title,
-            description: p.description,
-            parent: p.parent,
-        };
-        let v = self
-            .at(p.level)
-            .check(&comment, &p.recent)
+        let v = at(&self.checker, p.level)
+            .check(&p.comment(), &p.recent)
             .await
             .map_err(failed)?;
         Ok(Json(v))
@@ -93,18 +95,9 @@ impl Server {
         &self,
         Parameters(p): Parameters<CheckBatch>,
     ) -> Result<Json<Verdicts>, ErrorData> {
-        let checker = self.at(p.level);
-        let recent = std::sync::Arc::new(p.recent);
-        let results: Vec<_> = stream::iter(p.comments.into_iter().map(|c| {
-            let (checker, recent) = (checker.clone(), recent.clone());
-            async move { checker.check(&c, &recent).await }
-        }))
-        .buffered(CONCURRENCY)
-        .collect()
-        .await;
-        let verdicts = results
-            .into_iter()
-            .collect::<Result<_, _>>()
+        let verdicts = at(&self.checker, p.level)
+            .check_batch(&p.comments, &p.recent)
+            .await
             .map_err(failed)?;
         Ok(Json(Verdicts { verdicts }))
     }

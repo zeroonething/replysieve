@@ -1,11 +1,13 @@
 mod eval;
 mod mcp;
+mod serve;
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 use futures_util::{StreamExt, stream};
 use replysieve::{API_KEY_ENV, Checker, Comment, Config, DEFAULT_BASE_URL, Level, Options, Preset};
 use std::io::BufRead;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -28,6 +30,21 @@ enum Cmd {
     Eval(EvalArgs),
     /// Serve check_comment and check_batch over MCP on stdio.
     Mcp(Common),
+    /// Serve POST /v1/check, POST /v1/check/batch and GET /healthz over HTTP.
+    Serve(ServeArgs),
+}
+
+#[derive(Args)]
+struct ServeArgs {
+    /// Address and port to listen on.
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    bind: SocketAddr,
+    /// Listen on a non-loopback address without REPLYSIEVE_TOKEN. Only for a
+    /// server behind something that already authenticates callers.
+    #[arg(long)]
+    insecure_no_auth: bool,
+    #[command(flatten)]
+    common: Common,
 }
 
 #[derive(Args)]
@@ -232,6 +249,13 @@ async fn main() -> ExitCode {
             init_log(common.verbose);
             match checker(&common) {
                 Ok(c) => mcp::serve(c).await,
+                Err(e) => Err(e),
+            }
+        }
+        Cmd::Serve(args) => {
+            init_log(args.common.verbose);
+            match checker(&args.common) {
+                Ok(c) => serve::serve(c, args.bind, args.insecure_no_auth).await,
                 Err(e) => Err(e),
             }
         }
