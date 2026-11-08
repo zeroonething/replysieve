@@ -91,7 +91,7 @@ tasks:
 - id: US-REPLYSIEVE-0.1.0-T05
   summary: eval command over the labeled set and threshold tuning against the live default model.
   why_required: The release promises accuracy shown on a labeled set, measured by this command.
-  status: todo
+  status: done
   depends_on:
   - US-REPLYSIEVE-0.1.0-T02
   - US-REPLYSIEVE-0.1.0-T04
@@ -107,7 +107,12 @@ tasks:
   - README.md
   - Cargo.toml
   - Cargo.lock
-  evidence: []
+  evidence:
+  - "./target/release/replysieve eval --misses (live, ~typesafe/jev-latest resolving to typesafe/jev-1.14-20261014, 906 calls, 1 min 12 s) \u2014 light junk caught 100.0% (90/90), good wrongly rejected 0.0% (0/212); medium 100.0% (150/150), 0.0% (0/152); heavy 92.8% (194/209), 0.0% (0/93), 15 needs_review"
+  - "Second run, replysieve eval --level medium \u2014 100.0% (150/150) junk caught, 0.0% (0/152) good wrongly rejected"
+  - 'Medium target (junk caught 95% or more, good wrongly rejected under 5%) met with the starting thresholds 0.6/0.8/0.9; no tuning change made. Heavy misses: 14 nonspecific and 1 specific went to needs_review, 1 nonspecific (l009) approved'
+  - "cargo test --test eval \u2014 2 passed (per-level arithmetic on a 5-example mocked set; built-in set parses and stops on missing key)"
+  - Labeled set approved by Aakash in session 2026-11-08 before the eval runs
 - id: US-REPLYSIEVE-0.1.0-T06
   summary: Tests proving pre-check latency and that no comment text reaches disk or logs.
   why_required: Both are non-functional promises in the contract and need executable proof.

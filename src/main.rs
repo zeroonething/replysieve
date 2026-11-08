@@ -1,3 +1,4 @@
+mod eval;
 mod mcp;
 
 use anyhow::{Context, bail};
@@ -23,6 +24,8 @@ struct Cli {
 enum Cmd {
     /// Judge one comment, or a JSONL batch with --file.
     Check(CheckArgs),
+    /// Report junk caught and good wrongly rejected per level over a labeled set.
+    Eval(EvalArgs),
     /// Serve check_comment and check_batch over MCP on stdio.
     Mcp(Common),
 }
@@ -68,6 +71,38 @@ struct CheckArgs {
     recent: Option<PathBuf>,
     #[command(flatten)]
     common: Common,
+}
+
+#[derive(Args)]
+struct EvalArgs {
+    /// Labeled JSONL set [default: the set shipped with replysieve].
+    #[arg(long)]
+    file: Option<PathBuf>,
+    /// Print each wrong or needs_review verdict to stderr by example id.
+    #[arg(long)]
+    misses: bool,
+    #[command(flatten)]
+    common: Common,
+}
+
+async fn eval(args: EvalArgs) -> anyhow::Result<()> {
+    init_log(args.common.verbose);
+    let checker = checker(&args.common)?;
+    let set = match &args.file {
+        Some(path) => std::fs::read_to_string(path)
+            .with_context(|| format!("cannot read {}", path.display()))?,
+        None => eval::BUILT_IN.to_string(),
+    };
+    let levels = match args.common.level {
+        Some(l) => vec![l],
+        None => Level::ALL.to_vec(),
+    };
+    let preset = match &args.common.preset {
+        Some(name) => Some(name.parse::<Preset>().map_err(anyhow::Error::msg)?),
+        None => None,
+    };
+    eval::run(&checker, &set, &levels, preset, args.misses).await?;
+    Ok(())
 }
 
 fn options(common: &Common) -> anyhow::Result<Options> {
@@ -192,6 +227,7 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.cmd {
         Cmd::Check(args) => check(args).await,
+        Cmd::Eval(args) => eval(args).await,
         Cmd::Mcp(common) => {
             init_log(common.verbose);
             match checker(&common) {

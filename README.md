@@ -114,6 +114,25 @@ println!("{:?} {:?}", verdict.verdict, verdict.reason);
 
 Docs are on [docs.rs/replysieve](https://docs.rs/replysieve).
 
+## Accuracy
+
+`replysieve eval` runs the 302 labeled example comments that ship with the crate
+(product reviews, Reddit-style threads, X replies and launch comments) and
+reports, per level, how much junk was rejected and how many good comments were
+wrongly rejected. With `~typesafe/jev-latest` on 2026-11-08:
+
+| Level | Junk caught | Good wrongly rejected | Needs review |
+| --- | --- | --- | --- |
+| light | 100% (90/90) | 0% (0/212) | 0 |
+| medium | 100% (150/150) | 0% (0/152) | 0 |
+| heavy | 92.8% (194/209) | 0% (0/93) | 15 |
+
+At heavy, the misses are on-topic comments with no specific point that the model
+was unsure about, so they go to review rather than being rejected. The set was
+drafted with an AI model and reviewed by hand, so treat these numbers as a check
+that the pipeline works, not as a promise for your own comments. Run
+`replysieve eval --file your-set.jsonl --misses` on your own labeled comments.
+
 ## Privacy
 
 replysieve is stateless. It never writes comment text to disk or logs, at any
