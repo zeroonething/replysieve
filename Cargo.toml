@@ -1,9 +1,9 @@
 [package]
 name = "replysieve"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
-description = "Judge comments in a fraction of a second: approve, reject or needs-review with a reason, from small decision models on OpenRouter. CLI, MCP server and Rust library."
+description = "Judge comments in a fraction of a second: approve, reject or needs-review with a reason, from small decision models on OpenRouter. CLI, HTTP server, MCP server and Rust library."
 repository = "https://github.com/zeroonething/replysieve"
 documentation = "https://docs.rs/replysieve"
 license = "MIT OR Apache-2.0"
