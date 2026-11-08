@@ -131,3 +131,48 @@ jobs:
       - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
       - run: cargo package --locked --list
       - run: cargo publish --dry-run --locked
+
+  # The image the release publishes: built from this checkout, then run the
+  # way a user runs it. The key is a dummy: /healthz and the too_short
+  # precheck answer before any model call, so nothing leaves the runner.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: docker build -t replysieve:ci .
+      - name: Under 50 MB and runs as nonroot
+        run: |
+          size=$(docker image inspect -f '{{.Size}}' replysieve:ci)
+          user=$(docker image inspect -f '{{.Config.User}}' replysieve:ci)
+          echo "size=$size user=$user"
+          test "$size" -lt 50000000
+          test "$user" = "65532:65532"
+      - name: No shell in the image
+        run: '! docker run --rm --entrypoint sh replysieve:ci -c true'
+      - name: Start the server
+        run: |
+          docker run -d --name replysieve -p 8080:8080 \
+            -e OPENROUTER_API_KEY=dummy -e REPLYSIEVE_TOKEN=ci-token replysieve:ci
+          for _ in $(seq 30); do
+            curl -fsS http://127.0.0.1:8080/healthz && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Health, auth and an offline check
+        run: |
+          curl -fsS http://127.0.0.1:8080/healthz | jq -e '.status == "ok"'
+          for auth in "" "Authorization: Bearer wrong"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "$auth" \
+              -H 'Content-Type: application/json' -d '{"text":"hi"}' \
+              http://127.0.0.1:8080/v1/check)
+            test "$code" = 401
+          done
+          curl -fsS -H 'Authorization: Bearer ci-token' \
+            -H 'Content-Type: application/json' -d '{"text":"hi"}' \
+            http://127.0.0.1:8080/v1/check \
+            | jq -e '.verdict == "reject" and .reason == "too_short"'
+      - if: failure()
+        run: docker logs replysieve || true

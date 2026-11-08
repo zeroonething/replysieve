@@ -1,0 +1,10 @@
+# Allowlist: the build context is only what the crate build needs, so target/,
+# .git, .ultraship, .env and anything added later stay out of the image.
+*
+!Cargo.toml
+!Cargo.lock
+!src/
+!data/labeled.jsonl
+!LICENSE-MIT
+!LICENSE-APACHE
+!NOTICE

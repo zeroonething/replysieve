@@ -19,3 +19,10 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+
+  # The Dockerfile's base images: tag and digest bumped together.
+  - package-ecosystem: docker
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
