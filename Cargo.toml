@@ -1,9 +1,9 @@
 [package]
 name = "replysieve"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.90"
-description = "Judge comments in a fraction of a second: approve, reject or needs-review with a reason, from small decision models on OpenRouter. CLI, HTTP server, MCP server and Rust library."
+description = "Judge comments in a fraction of a second: approve, reject or needs-review with a reason, from small decision models on OpenRouter. CLI, HTTP server, MCP server, Rust library and WebAssembly for JavaScript."
 repository = "https://github.com/zeroonething/replysieve"
 documentation = "https://docs.rs/replysieve"
 license = "MIT OR Apache-2.0"
@@ -22,19 +22,39 @@ include = [
     "/NOTICE",
 ]
 
+[features]
+default = ["cli"]
+# The command-line tool, HTTP server and MCP server. Off for the WebAssembly
+# build of the library (`--no-default-features --target wasm32-unknown-unknown`).
+cli = ["dep:clap", "dep:tokio", "dep:axum", "dep:rmcp", "dep:schemars"]
+
+[[bin]]
+name = "replysieve"
+path = "src/main.rs"
+required-features = ["cli"]
+
 [dependencies]
 anyhow = "1.0.104"
-axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
-clap = { version = "4.6.7", features = ["derive"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"], optional = true }
+clap = { version = "4.6.7", features = ["derive"], optional = true }
 futures-util = "0.3.34"
 log = "0.4.29"
-reqwest = { version = "0.13.5", features = ["json"] }
-rmcp = { version = "3.9.0", features = ["server", "transport-io", "macros"] }
-schemars = "1.2.3"
+rmcp = { version = "3.9.0", features = ["server", "transport-io", "macros"], optional = true }
+schemars = { version = "1.2.3", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
 toml = "1.2.1"
+web-time = "1.1.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.13.5", features = ["json"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3.107"
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4.80"
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -37,6 +37,8 @@
 #![warn(missing_docs)]
 
 mod config;
+#[cfg(target_arch = "wasm32")]
+mod js;
 mod judge;
 mod openrouter;
 mod precheck;
@@ -50,7 +52,7 @@ pub use presets::Preset;
 pub use types::{Comment, Decision, Level, Reason, Verdict};
 
 use precheck::Prechecks;
-use std::time::Instant;
+use web_time::Instant;
 
 /// The default OpenRouter decision model.
 pub const DEFAULT_MODEL: &str = "~typesafe/jev-latest";
@@ -139,6 +141,15 @@ impl Checker {
             questions: judge::questions(options.preset, &options.rules),
             options,
         }
+    }
+
+    /// The same checker with another per-model timeout.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+        if let Some(client) = self.client.as_mut() {
+            client.timeout = timeout;
+        }
+        self
     }
 
     /// The same checker at another strictness level.

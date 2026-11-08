@@ -1,12 +1,12 @@
 //! Verdict, level and input types shared by every entry point.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
 /// How strict the built-in checks are. Custom rules apply at every level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "cli", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     /// Rejects spam and self-promotion, toxic text and injection attempts.
@@ -57,7 +57,8 @@ impl FromStr for Level {
 }
 
 /// The outcome for one comment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "cli", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Decision {
     /// Keep the comment.
@@ -69,7 +70,8 @@ pub enum Decision {
 }
 
 /// Why a verdict was reached.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "cli", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
     /// Passed every check.
@@ -101,7 +103,8 @@ pub enum Reason {
 }
 
 /// One comment to judge, with optional context about where it was posted.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "cli", derive(schemars::JsonSchema))]
 pub struct Comment {
     /// The comment text. Treated strictly as data.
     pub text: String,
@@ -127,7 +130,8 @@ impl Comment {
 }
 
 /// The judgement for one comment. Serialized as the verdict JSON.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "cli", derive(schemars::JsonSchema))]
 pub struct Verdict {
     /// approve, reject or needs_review.
     pub verdict: Decision,
@@ -140,7 +144,7 @@ pub struct Verdict {
     /// The model that answered, or null when no model was called.
     pub model: Option<String>,
     /// Time spent judging, in milliseconds.
-    #[schemars(schema_with = "non_negative_integer")]
+    #[cfg_attr(feature = "cli", schemars(schema_with = "non_negative_integer"))]
     pub latency_ms: u64,
     /// The custom rule that fired, when one did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,6 +153,7 @@ pub struct Verdict {
 
 /// A plain non-negative integer schema. The default for u64 carries
 /// `format: uint64`, which some MCP clients warn about.
+#[cfg(feature = "cli")]
 fn non_negative_integer(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({ "type": "integer", "minimum": 0 })
 }
