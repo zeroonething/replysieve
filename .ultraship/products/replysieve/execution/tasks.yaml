@@ -75,6 +75,8 @@ tasks:
   evidence:
   - "cargo test --test mcp \u2014 1 passed: replysieve mcp over stdio lists check_comment and check_batch; check_comment (default and level heavy) and check_batch structuredContent equal the CLI verdict JSON for the same inputs (latency_ms excluded); server exits 0 when stdin closes"
   - "cargo test \u2014 28 passed, 0 failed; cargo clippy --all-targets -- -D warnings \u2014 exit 0; cargo fmt --check \u2014 exit 0"
+  - "Real clients (2026-11-08) \u2014 claude -p with --mcp-config replysieve mcp: check_comment approved a specific comment (useful, jev-1.14) and rejected stock praise (stock_phrase); check_batch returned both in order. codex exec with mcp_servers.replysieve: check_comment rejected an off-topic comment at heavy (off_topic) and a moderator-instruction comment at medium (injection_attempt)"
+  - "Fix: latency_ms schema now plain integer with minimum 0; Claude Code had warned unknown format uint64. cargo test \u2014 33 passed, 0 failed; clippy and fmt clean"
 - id: US-REPLYSIEVE-0.1.0-T04
   summary: Draft about 300 labeled example comments across reviews, Reddit-style threads, X replies and launch comments.
   why_required: The accuracy target is measured on this set; without it there is no evidence of value.
