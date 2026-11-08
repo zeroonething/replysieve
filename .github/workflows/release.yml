@@ -41,11 +41,11 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       minor: ${{ steps.version.outputs.minor }}
       prerelease: ${{ steps.version.outputs.prerelease }}
-      latest: ${{ steps.version.outputs.latest }}
       ref: ${{ steps.exists.outputs.ref }}
       release: ${{ steps.exists.outputs.release }}
       crate: ${{ steps.exists.outputs.crate }}
       image: ${{ steps.exists.outputs.image }}
+      retag: ${{ steps.exists.outputs.retag }}
       work: ${{ steps.exists.outputs.work }}
     steps:
       - name: Only from main
@@ -67,17 +67,11 @@ jobs:
           fi
           prerelease=false
           [[ "$version" == *-* ]] && prerelease=true
-          # latest moves only forward: never onto a pre-release, never onto a
-          # patch of an older line released after a newer one.
-          highest=$( { git tag -l 'v[0-9]*' | grep -vF -e - | sed 's/^v//' || true; echo "$version"; } | sort -V | tail -1)
-          latest=false
-          [[ "$prerelease" == false && "$highest" == "$version" ]] && latest=true
           {
             echo "version=$version"
             echo "tag=v$version"
             echo "minor=$(cut -d. -f1,2 <<< "$version")"
             echo "prerelease=$prerelease"
-            echo "latest=$latest"
           } | tee -a "$GITHUB_OUTPUT"
       - name: Which outputs already exist
         id: exists
@@ -85,6 +79,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           if sha=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}"); then
             # Anyone with write access can create a tag; only one on main counts.
@@ -110,13 +106,22 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin > /dev/null
           image=true
           docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1 && image=false
+          # The version tag is pushed first and the minor tag last, so a minor
+          # tag on another digest means the tagging stopped half way.
+          retag=false
+          if [[ "$image" == false && "$PRERELEASE" == false ]]; then
+            want=$(docker buildx imagetools inspect --raw "$IMAGE:$VERSION" | sha256sum)
+            have=$(docker buildx imagetools inspect --raw "$IMAGE:$MINOR" 2> /dev/null | sha256sum)
+            [[ "$want" == "$have" ]] || retag=true
+          fi
           work=false
-          [[ "$release$crate$image" == *true* ]] && work=true
+          [[ "$release$crate$image$retag" == *true* ]] && work=true
           {
             echo "ref=$ref"
             echo "release=$release"
             echo "crate=$crate"
             echo "image=$image"
+            echo "retag=$retag"
             echo "work=$work"
           } | tee -a "$GITHUB_OUTPUT"
           if [[ "$work" == false ]]; then
@@ -170,10 +175,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Notes
+        id: notes
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ needs.plan.outputs.ref }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
         run: |
+          # Computed now, not in plan, so a rerun after a newer release has
+          # shipped never moves "latest" back.
+          highest=$( { git tag -l 'v[0-9]*' | grep -vF -e - | sed 's/^v//' || true; echo "$VERSION"; } | sort -V | tail -1)
+          latest=false
+          [[ "$PRERELEASE" == false && "$highest" == "$VERSION" ]] && latest=true
+          echo "latest=$latest" | tee -a "$GITHUB_OUTPUT"
           awk '/^## \[/{n++; next} n==1 && !/^\[[^]]*\]:/' CHANGELOG.md > notes.md
           previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "$REF^" 2>/dev/null || true)
           if [ -n "$previous" ]; then
@@ -188,14 +202,20 @@ jobs:
           name: ${{ needs.plan.outputs.tag }}
           body_path: notes.md
           prerelease: ${{ needs.plan.outputs.prerelease }}
-          make_latest: ${{ needs.plan.outputs.latest }}
+          make_latest: ${{ steps.notes.outputs.latest }}
 
   # "Released in vX.Y.Z" on each outside contributor's pull request and the
-  # issues it closed, once per item. Its own job, so the one token that can
-  # comment holds nothing else. Not for a pre-release.
+  # issues it closed, once every part of the release exists. The script marks
+  # each comment, so it runs on every push to main and posts only what is
+  # missing. Its own job, so the one token that can comment holds nothing
+  # else. Not for a pre-release.
   thank:
-    needs: [plan, release]
-    if: needs.plan.outputs.prerelease == 'false'
+    needs: [plan, test, release, publish, manifest]
+    if: >-
+      always() && needs.plan.result == 'success'
+      && needs.plan.outputs.prerelease == 'false'
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -285,27 +305,45 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push "$TAG"
 
+  # Joins the architectures under the version tag, then points latest (only
+  # when this is the highest release) and the minor tag at it, in that order.
+  # When the version tag already exists, only the moving tags are fixed up.
   manifest:
     needs: [plan, image]
+    if: >-
+      always() && needs.plan.result == 'success'
+      && (needs.image.result == 'success'
+          || (needs.image.result == 'skipped' && needs.plan.outputs.retag == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Join the architectures under the release tags
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag the image
         env:
           VERSION: ${{ needs.plan.outputs.version }}
           MINOR: ${{ needs.plan.outputs.minor }}
           PRERELEASE: ${{ needs.plan.outputs.prerelease }}
-          LATEST: ${{ needs.plan.outputs.latest }}
+          BUILT: ${{ needs.image.result == 'success' }}
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          tags=(-t "$IMAGE:$VERSION")
-          [[ "$PRERELEASE" == false ]] && tags+=(-t "$IMAGE:$MINOR")
-          [[ "$LATEST" == true ]] && tags+=(-t "$IMAGE:latest")
-          docker buildx imagetools create "${tags[@]}" "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          if [[ "$BUILT" == true ]]; then
+            docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          fi
+          if [[ "$PRERELEASE" == false ]]; then
+            # Computed now, not in plan, so a rerun never moves latest back.
+            highest=$( { git tag -l 'v[0-9]*' | grep -vF -e - | sed 's/^v//' || true; echo "$VERSION"; } | sort -V | tail -1)
+            if [[ "$highest" == "$VERSION" ]]; then
+              docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:$VERSION"
+            fi
+            docker buildx imagetools create -t "$IMAGE:$MINOR" "$IMAGE:$VERSION"
+          fi
           docker buildx imagetools inspect "$IMAGE:$VERSION" | tee manifest.txt
           grep -q 'linux/amd64' manifest.txt
           grep -q 'linux/arm64' manifest.txt
