@@ -52,6 +52,6 @@
     "test:workerd": "node --test test/workerd.test.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.156.0"
+    "wrangler": "^4.158.0"
   }
 }
